@@ -286,25 +286,16 @@
 
         /**
          * 구글 시트(book) 전송용 표준 페이로드 생성
+         * (사용자님의 Apps Script doPost 구조인 payload.sheet / payload.data 형식에 100% 맞춤)
          */
         window.buildSheetPayload = function() {
             return {
-                action: 'save',
-                sheetName: GOOGLE_SHEET_NAME,
                 sheet: GOOGLE_SHEET_NAME,
-                timestamp: new Date().toISOString(),
-                users: usersList,
-                books: booksList,
-                // 시트 행 단위 저장 스크립트와도 호환되도록 평탄화 요약 포함
-                bookRows: booksList.map(b => ({
-                    id: b.id,
-                    title: b.title,
-                    price: b.price,
-                    author: b.author || '',
-                    date: b.date || '',
-                    category: b.category || '',
-                    applicants: JSON.stringify(b.applicants || [])
-                }))
+                data: {
+                    timestamp: new Date().toISOString(),
+                    users: usersList,
+                    books: booksList
+                }
             };
         };
 
@@ -431,6 +422,19 @@
                     throw new Error(`HTTP ${response.status}`);
                 }
 
+                // Apps Script가 반환한 JSON({ status: 'success' | 'error' }) 확인
+                try {
+                    const resText = await response.text();
+                    const resJson = JSON.parse(resText);
+                    if (resJson && resJson.status === 'error') {
+                        throw new Error(resJson.message || 'Apps Script 저장 오류');
+                    }
+                } catch (parseErr) {
+                    if (parseErr.message && parseErr.message.includes('Apps Script')) {
+                        throw parseErr;
+                    }
+                }
+
                 window.updateSyncStatusUI('synced', '구글 시트(book) 저장됨');
                 if (manual) window.showMessage("구글 시트(book)에 데이터를 저장했습니다.");
                 isSavingToSheet = false;
@@ -445,15 +449,15 @@
                         body: bodyStr
                     });
 
-                    window.updateSyncStatusUI('synced', '구글 시트(book) 전송됨');
-                    if (manual) window.showMessage("구글 시트(book)로 데이터를 전송했습니다.");
+                    window.updateSyncStatusUI('synced', '구글 시트(book) 전송 완료');
+                    if (manual) window.showMessage("구글 시트(book)에 데이터를 전송했습니다.");
                     isSavingToSheet = false;
                     return true;
                 } catch (fallbackErr) {
-                    console.error('구글 시트 저장 오류:', primaryErr, fallbackErr);
-                    window.updateSyncStatusUI('error', '시트 저장 실패 (로컬 보존)');
-                    if (!silent || manual || isExit) {
-                        window.showMessage("네트워크 오류로 구글 시트 저장에 실패했습니다. (로컬에 임시 저장됨)", "error");
+                    console.error('구글 시트 저장 오류:', fallbackErr);
+                    window.updateSyncStatusUI('error', '시트 저장 실패 (로컬 보존됨)');
+                    if (manual || !silent) {
+                        window.showMessage("구글 시트 저장 중 네트워크 오류가 발생했습니다.", "error");
                     }
                     isSavingToSheet = false;
                     return false;
@@ -469,7 +473,7 @@
             window.updateSyncStatusUI('loading', '시트(book) 불러오는 중...');
 
             try {
-                const url = `${GOOGLE_SCRIPT_URL}?action=load&sheetName=${encodeURIComponent(GOOGLE_SHEET_NAME)}&sheet=${encodeURIComponent(GOOGLE_SHEET_NAME)}&_t=${Date.now()}`;
+                const url = `${GOOGLE_SCRIPT_URL}?sheet=${encodeURIComponent(GOOGLE_SHEET_NAME)}&_t=${Date.now()}`;
                 const response = await fetch(url, { method: 'GET', redirect: 'follow' });
 
                 if (!response.ok) {
@@ -484,7 +488,13 @@
                     throw new Error("JSON 형식이 아닌 응답입니다.");
                 }
 
-                // 다양한 Apps Script 응답 구조 유연하게 파싱
+                if (parsed && parsed.status === 'error') {
+                    window.updateSyncStatusUI('synced', '시트(book) 연결됨 (신규 생성 대기)');
+                    if (manual) window.showMessage(parsed.message || "시트가 아직 생성되지 않았습니다. '지금 저장'을 눌러주세요.");
+                    return;
+                }
+
+                // 사용자님의 doGet이 반환하는 분할 합산 JSON ({ users, books, timestamp }) 파싱
                 let extractedUsers = null;
                 let extractedBooks = null;
 
@@ -579,49 +589,63 @@
             if (urlDisplay) urlDisplay.textContent = GOOGLE_SCRIPT_URL;
             if (sampleEl) {
                 sampleEl.textContent =
-`function doPost(e) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var payload = JSON.parse(e.postData.contents);
-  var sheetName = payload.sheetName || "book";
-  var sheet = ss.getSheetByName(sheetName) || ss.insertSheet(sheetName);
+`function doGet(e) {
+  const sheetName = (e && e.parameter && e.parameter.sheet) ? e.parameter.sheet : 'book';
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(sheetName);
 
-  // A1: 저장시각, B1: 전체 JSON 데이터 (자동 복원용)
-  sheet.getRange("A1").setValue(payload.timestamp || new Date().toISOString());
-  sheet.getRange("B1").setValue(JSON.stringify({
-    users: payload.users || [],
-    books: payload.books || []
-  }));
-
-  // 3행부터 도서 목록을 표 형태로 기록
-  sheet.getRange(3, 1, Math.max(sheet.getLastRow(), 3), 7).clearContent();
-  var header = [["ID", "도서명", "단가", "출판사", "출판일", "카테고리", "신청자내역"]];
-  sheet.getRange(3, 1, 1, 7).setValues(header);
-  if (payload.bookRows && payload.bookRows.length > 0) {
-    var rows = payload.bookRows.map(function(r) {
-      return [r.id, r.title, r.price, r.author, r.date, r.category, r.applicants];
-    });
-    sheet.getRange(4, 1, rows.length, 7).setValues(rows);
+  if (!sheet) {
+    return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: '시트를 찾을 수 없습니다.' }))
+      .setMimeType(ContentService.MimeType.JSON);
   }
 
-  return ContentService
-    .createTextOutput(JSON.stringify({ status: "success", sheet: sheetName }))
+  const lastRow = sheet.getLastRow();
+  if (lastRow === 0) {
+    return ContentService.createTextOutput(JSON.stringify({}))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // A열에 나누어 저장된 데이터를 모두 합쳐서 반환
+  const values = sheet.getRange(1, 1, lastRow, 1).getValues();
+  const rawData = values.map(row => row[0]).join('');
+  const output = rawData ? rawData : JSON.stringify({});
+
+  return ContentService.createTextOutput(output)
     .setMimeType(ContentService.MimeType.JSON);
 }
 
-function doGet(e) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheetName = (e && e.parameter && e.parameter.sheetName) || "book";
-  var sheet = ss.getSheetByName(sheetName);
-  if (!sheet) {
-    return ContentService
-      .createTextOutput(JSON.stringify({ users: [], books: [] }))
+function doPost(e) {
+  try {
+    const payload = JSON.parse(e.postData.contents);
+    const sheetName = payload.sheet || 'book';
+    const dataString = JSON.stringify(payload.data);
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let sheet = ss.getSheetByName(sheetName);
+    if (!sheet) {
+      sheet = ss.insertSheet(sheetName);
+    }
+
+    // 기존 내용 비우고 40,000자씩 나누어 A1, A2, A3...에 저장
+    sheet.clearContents();
+    const chunkSize = 40000;
+    const chunks = [];
+    for (let i = 0; i < dataString.length; i += chunkSize) {
+      chunks.push([dataString.substring(i, i + chunkSize)]);
+    }
+
+    if (chunks.length > 0) {
+      sheet.getRange(1, 1, chunks.length, 1).setValues(chunks);
+    }
+    sheet.getRange('B1').setValue('최근 동기화: ' + new Date().toLocaleString('ko-KR'));
+    sheet.getRange('B2').setValue('분할 저장 칸 수: ' + chunks.length);
+
+    return ContentService.createTextOutput(JSON.stringify({ status: 'success', chunks: chunks.length }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: err.toString() }))
       .setMimeType(ContentService.MimeType.JSON);
   }
-  var raw = sheet.getRange("B1").getValue();
-  var output = raw ? raw : JSON.stringify({ users: [], books: [] });
-  return ContentService
-    .createTextOutput(output)
-    .setMimeType(ContentService.MimeType.JSON);
 }`;
             }
             if (modal) modal.classList.remove('hidden');
