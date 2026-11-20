@@ -1,0 +1,2453 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>문화누리카드 도서 관리 시스템</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- SheetJS (Excel) -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&family=Noto+Sans+KR:wght@300;400;500;700;900&display=swap');
+        
+        body {
+            font-family: 'Inter', 'Noto Sans KR', sans-serif;
+            background-color: #f7fdfc;
+            color: #1e293b;
+        }
+
+        /* 인쇄 최적화 스타일 (A4 세로, 상 20mm / 좌우하 10mm) */
+        @media print {
+            @page { size: A4 portrait; margin: 20mm 10mm 10mm 10mm; } 
+            
+            html, body, main { 
+                overflow: visible !important; 
+                height: auto !important; 
+                min-height: auto !important;
+                max-height: none !important;
+                position: static !important;
+                background-color: white !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+            
+            body > *:not(main) { display: none !important; }
+            main > *:not(#print-area) { display: none !important; }
+            .no-print, nav, header, button, #message-box, .fixed, #exit-screen { display: none !important; }
+            
+            .print-only { display: block !important; width: 100% !important; margin: 0 !important; padding: 0 !important; }
+            
+            #print-area {
+                position: static !important;
+                width: 100% !important;
+            }
+
+            .family-section { page-break-after: always; break-after: page; padding: 0 !important; }
+            .family-section:last-child { page-break-after: auto; break-after: auto; }
+            
+            table { width: 100% !important; border-collapse: collapse !important; border: 1.5px solid #000 !important; margin-top: 10px; }
+            tr { page-break-inside: avoid; }
+            th, td { border: 1px solid #000 !important; padding: 6px 8px !important; text-align: center !important; font-size: 10.5pt !important; color: #000 !important; height: 32px; }
+            th { background-color: #f0f0f0 !important; font-weight: 800 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            h1 { font-size: 20pt !important; text-align: center; font-weight: 900 !important; text-decoration: underline; text-underline-offset: 8px; margin-bottom: 15px !important; color: #000 !important; }
+            .print-header-info { display: flex !important; justify-content: space-between !important; align-items: center !important; margin-bottom: 8px; font-weight: bold; border-bottom: 1.5px solid #000; padding-bottom: 4px; font-size: 13pt; color: #000 !important; }
+        }
+
+        .print-only { display: none; }
+        @media print { .print-only { display: block !important; } }
+        
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f0fdfa; }
+        ::-webkit-scrollbar-thumb { background: #99f6e4; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #5eead4; }
+        .active-tab { background-color: #10b981; color: white; box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.15); }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col md:flex-row overflow-x-hidden md:overflow-hidden text-slate-800 text-sm">
+
+    <!-- 사이드바 내비게이션 -->
+    <nav id="sidebar-nav" class="w-full md:w-64 bg-emerald-50 border-b md:border-b-0 md:border-r border-emerald-100 p-5 md:p-6 space-y-6 md:space-y-8 flex-shrink-0 no-print flex flex-col md:h-screen overflow-y-auto">
+        <div class="flex items-center justify-between md:justify-start md:space-x-3">
+            <div class="flex items-center space-x-3 cursor-pointer" onclick="window.setActiveTab('dashboard')">
+                <div class="bg-emerald-500 p-2 rounded-xl text-white shadow-sm">
+                    <i data-lucide="book-open" size="24"></i>
+                </div>
+                <h1 class="text-xl font-black leading-tight text-emerald-900">문화누리<br/>관리시스템</h1>
+            </div>
+        </div>
+
+        <!-- 구글 시트 자동 동기화 상태 배지 -->
+        <div id="sync-status-card" class="bg-white/90 border border-emerald-100 rounded-2xl p-3.5 shadow-sm space-y-2">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2 min-w-0">
+                    <span id="sync-dot" class="w-2.5 h-2.5 rounded-full bg-emerald-400 flex-shrink-0"></span>
+                    <span id="sync-label" class="text-[11px] font-black text-emerald-900 truncate">구글 시트 연동 준비</span>
+                </div>
+                <button onclick="window.saveToGoogleSheet({ manual: true })" title="지금 수동 저장" class="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white transition-colors">
+                    <i data-lucide="cloud-upload" size="13"></i>
+                </button>
+            </div>
+            <div class="flex items-center justify-between text-[10px] text-slate-400 font-bold">
+                <span>대상 시트: <strong class="text-emerald-600">book</strong></span>
+                <span id="sync-time" class="font-mono">--:--:--</span>
+            </div>
+        </div>
+
+        <!-- 탭 메뉴 -->
+        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-1 gap-1.5 flex-1" id="nav-tabs"></div>
+
+        <!-- 종료 버튼 -->
+        <div class="pt-4 md:pt-6 border-t border-emerald-100 space-y-2">
+            <button onclick="window.handleExitApp()" class="w-full flex items-center justify-center md:justify-start space-x-3 px-4 py-3 rounded-xl bg-white text-rose-500 border border-rose-100 hover:bg-rose-500 hover:text-white transition-all shadow-sm font-bold text-sm">
+                <i data-lucide="power" size="18"></i>
+                <span>구글 시트 저장 후 종료</span>
+            </button>
+        </div>
+    </nav>
+
+    <!-- 메인 컨텐츠 영역 -->
+    <main id="main-frame" class="flex-1 p-4 md:p-8 overflow-y-auto md:max-h-screen relative text-slate-800 text-sm">
+        <div id="print-area" class="print-only text-slate-900"></div>
+        <header id="main-header" class="mb-8 flex flex-col md:flex-row justify-between items-start md:items-end gap-4 no-print"></header>
+        <div id="content-area" class="no-print pb-12"></div>
+    </main>
+
+    <!-- 종료 진행 및 완료 오버레이 화면 -->
+    <div id="exit-screen" class="fixed inset-0 bg-slate-900/95 backdrop-blur-sm z-[300] hidden flex flex-col items-center justify-center text-white text-center p-6">
+        <div id="exit-saving-state" class="max-w-md w-full p-8 rounded-[2.5rem] bg-slate-800/80 border border-slate-700 shadow-2xl">
+            <div class="w-20 h-20 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center mx-auto mb-6 animate-pulse">
+                <i data-lucide="cloud-upload" size="40"></i>
+            </div>
+            <h2 class="text-2xl font-black mb-2">구글 시트(book) 저장 중...</h2>
+            <p class="text-slate-400 text-sm">최종 데이터를 안전하게 저장한 뒤 시스템을 종료합니다.</p>
+        </div>
+        <div id="exit-done-state" class="hidden max-w-md w-full p-8 rounded-[2.5rem] bg-slate-800/90 border border-slate-700 shadow-2xl">
+            <div class="w-20 h-20 bg-emerald-500 text-white rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg shadow-emerald-500/30">
+                <i data-lucide="check" size="40"></i>
+            </div>
+            <h2 class="text-3xl font-black mb-2">시스템 종료됨</h2>
+            <p id="exit-done-desc" class="text-slate-300 text-sm leading-relaxed mb-6">
+                구글 시트(<strong>book</strong>)에 최종 데이터 저장이 완료되었습니다.<br/>브라우저 탭을 닫으셔도 좋습니다.
+            </p>
+            <div class="flex flex-col sm:flex-row gap-2 justify-center">
+                <button onclick="window.handleExportBackup()" class="px-5 py-3 rounded-2xl bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs transition-colors flex items-center justify-center gap-2">
+                    <i data-lucide="download" size="14"></i> JSON 백업 추가 저장
+                </button>
+                <button onclick="window.handleReopenApp()" class="px-5 py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs transition-colors flex items-center justify-center gap-2">
+                    <i data-lucide="rotate-ccw" size="14"></i> 시스템 다시 열기
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 이용자 상세 보기 슬라이드 모달 -->
+    <div id="modal-container" class="fixed inset-0 bg-emerald-950/20 backdrop-blur-md z-50 hidden no-print flex justify-end" onclick="if(event.target === this) window.closeModal()">
+        <div id="modal-content" class="w-full max-w-lg bg-white h-full shadow-2xl p-6 md:p-8 flex flex-col transform translate-x-full transition-transform duration-300"></div>
+    </div>
+
+    <!-- 커스텀 확인(Confirm) 모달 (alert/confirm 대체) -->
+    <div id="confirm-modal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] hidden no-print flex items-center justify-center p-4">
+        <div class="bg-white rounded-[2rem] max-w-sm w-full p-6 md:p-7 shadow-2xl border border-emerald-100">
+            <div class="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-4">
+                <i data-lucide="help-circle" size="24"></i>
+            </div>
+            <h3 id="confirm-modal-title" class="text-lg font-black text-slate-900 mb-2">확인</h3>
+            <p id="confirm-modal-message" class="text-sm text-slate-600 font-medium leading-relaxed mb-6 whitespace-pre-line"></p>
+            <div class="flex gap-2">
+                <button id="confirm-cancel-btn" onclick="window.closeConfirmModal(false)" class="flex-1 py-3 rounded-xl bg-slate-100 text-slate-600 font-bold text-sm hover:bg-slate-200 transition-colors">취소</button>
+                <button id="confirm-ok-btn" onclick="window.closeConfirmModal(true)" class="flex-1 py-3 rounded-xl bg-emerald-500 text-white font-black text-sm hover:bg-emerald-600 transition-colors shadow-md">확인</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 구글 Apps Script 연결 정보 / 가이드 모달 -->
+    <div id="gas-info-modal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] hidden no-print flex items-center justify-center p-4" onclick="if(event.target === this) window.closeGasInfoModal()">
+        <div class="bg-white rounded-[2rem] max-w-2xl w-full p-6 md:p-8 shadow-2xl border border-emerald-100 max-h-[85vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-black text-emerald-950 flex items-center gap-2">
+                    <i data-lucide="sheet" class="text-emerald-500" size="20"></i> 구글 시트(book) 연동 정보
+                </h3>
+                <button onclick="window.closeGasInfoModal()" class="p-2 rounded-xl bg-slate-100 text-slate-500 hover:bg-slate-200">
+                    <i data-lucide="x" size="18"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs">
+                <div class="bg-emerald-50/70 p-4 rounded-2xl border border-emerald-100 space-y-1.5">
+                    <p class="font-black text-emerald-900">연결된 Apps Script 웹 앱 주소</p>
+                    <p class="font-mono text-[11px] text-emerald-700 break-all bg-white p-2.5 rounded-xl border border-emerald-100" id="gas-url-display"></p>
+                    <p class="text-slate-500 font-medium pt-1">저장 시트명: <strong class="text-emerald-700">book</strong> (데이터 변경 시 및 프로그램 종료 시 자동 전송)</p>
+                </div>
+                <div class="space-y-2">
+                    <div class="flex justify-between items-center">
+                        <span class="font-black text-slate-700">참고용 Google Apps Script (doGet / doPost) 코드</span>
+                        <button onclick="window.copyGasSampleCode()" class="px-3 py-1.5 bg-emerald-500 text-white rounded-lg font-bold hover:bg-emerald-600 transition-colors flex items-center gap-1">
+                            <i data-lucide="copy" size="12"></i> 코드 복사
+                        </button>
+                    </div>
+                    <pre id="gas-sample-code" class="bg-slate-900 text-emerald-200 p-4 rounded-2xl overflow-x-auto text-[11px] font-mono leading-relaxed"></pre>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 상단 토스트 알림 메시지 -->
+    <div id="message-box" class="fixed top-6 left-1/2 -translate-x-1/2 z-[250] px-5 py-3 bg-slate-800 text-white rounded-2xl shadow-2xl hidden flex items-center gap-3 max-w-[90vw]">
+        <i id="message-icon" data-lucide="info" size="18" class="text-emerald-400 flex-shrink-0"></i>
+        <span id="message-text" class="font-bold text-xs md:text-sm"></span>
+    </div>
+
+    <script>
+        // ==========================================
+        // 1. 구글 시트(Google Apps Script) 연동 설정
+        // ==========================================
+        const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwmiCv86g7KKlS6NlYapvyfPuduBaRWBT6bj0tTh3Ln2QcmEJ_Sdwz_G-2Q-QkaY_ihow/exec";
+        const GOOGLE_SHEET_NAME = "book";
+        const LOCAL_STORAGE_KEY = "cultureNuriManagerData_book_v2";
+
+        // 자동 저장 디바운스 타이머 및 상태
+        let autoSaveTimer = null;
+        let isSavingToSheet = false;
+        let lastSyncTime = "--:--:--";
+        let messageTimer = null;
+        let confirmCallback = null;
+
+        // ==========================================
+        // 2. 애플리케이션 데이터 상태
+        // ==========================================
+        const DEFAULT_USERS = [
+            { id: 1, family: '바위솔', name: '김영남', budget: 150000, spent: [0, 0, 0, 0], interests: ['필사북', '국가'], receivedStatus: [false, false, false, false] },
+            { id: 2, family: '기린초', name: '박효균', budget: 150000, spent: [0, 0, 0, 0], interests: ['색칠북'], receivedStatus: [false, false, false, false] },
+            { id: 3, family: '붓꽃', name: '유인수', budget: 150000, spent: [0, 0, 0, 0], interests: ['색칠북', '컬러링북'], receivedStatus: [false, false, false, false] },
+        ];
+
+        // applicants 구조: { name: string, round: number, actualPrice?: number }[]
+        const DEFAULT_BOOKS = [
+            { id: 1, title: '우리 아이 처음 만나는 첫 스티커 색칠북 7권세트', price: 37800, author: 'oh!북스', date: '2023-07-01', category: '색칠북', applicants: [] },
+            { id: 2, title: '바오밥 성장그림북 1~3', price: 35000, author: '바오밥', date: '2020-01-01', category: '교재', applicants: [] },
+            { id: 3, title: '어린이 성경 말씀 요점만 따라 쓰기', price: 14000, author: '꿈그린', date: '2025-11-01', category: '필사북', applicants: [] },
+        ];
+
+        let usersList = JSON.parse(JSON.stringify(DEFAULT_USERS));
+        let booksList = JSON.parse(JSON.stringify(DEFAULT_BOOKS));
+
+        const CATEGORIES = ['색칠북', '컬러링북', '필사북', '교재', '국가'];
+        let activeTab = 'dashboard';
+        let searchTerm = '';
+        let bookSortCriteria = 'date';
+
+        // 대상자/도서 수정 폼 상태
+        let editingUserId = null;
+        let editingBookId = null;
+        let tempUserData = { family: '', name: '', budget: 150000, interests: [] };
+        let tempBookData = { title: '', price: '', author: '', date: '', category: '색칠북' };
+
+        // 스마트 구입 신청 상태
+        let purchaseUser = "";
+        let purchaseRound = 0; // 0~3 (1차~4차)
+        let cart = []; // { userName, round, book }[]
+
+        // 구입 확정(입고) 상태
+        let receivingUser = "";
+        let receivingRound = 0; // 0~3 (1차~4차)
+        let receivingItems = []; // { bookId, title, category, author, originalPrice, actualPrice }[]
+        let receivingSearch = "";
+
+        // ==========================================
+        // 3. 초기화 및 구글 시트 자동 불러오기/저장 엔진
+        // ==========================================
+        window.onload = async () => {
+            // 1) 로컬 캐시 먼저 복원하여 즉각 렌더링
+            window.loadFromLocalCache();
+            lucide.createIcons();
+            window.renderNav();
+            window.renderHeader();
+            window.updateTabContent();
+
+            // 2) 구글 시트(book)에서 최신 데이터 비동기 불러오기
+            await window.loadFromGoogleSheet({ silent: false });
+        };
+
+        // 브라우저 탭을 직접 닫을 때도 book 시트로 비콘 전송 시도
+        window.addEventListener('beforeunload', () => {
+            try {
+                const payload = window.buildSheetPayload();
+                const blob = new Blob([JSON.stringify(payload)], { type: 'text/plain;charset=utf-8' });
+                if (navigator.sendBeacon) {
+                    navigator.sendBeacon(GOOGLE_SCRIPT_URL, blob);
+                }
+            } catch (err) {
+                console.error('beforeunload beacon error:', err);
+            }
+        });
+
+        /**
+         * 구글 시트(book) 전송용 표준 페이로드 생성
+         */
+        window.buildSheetPayload = function() {
+            return {
+                action: 'save',
+                sheetName: GOOGLE_SHEET_NAME,
+                sheet: GOOGLE_SHEET_NAME,
+                timestamp: new Date().toISOString(),
+                users: usersList,
+                books: booksList,
+                // 시트 행 단위 저장 스크립트와도 호환되도록 평탄화 요약 포함
+                bookRows: booksList.map(b => ({
+                    id: b.id,
+                    title: b.title,
+                    price: b.price,
+                    author: b.author || '',
+                    date: b.date || '',
+                    category: b.category || '',
+                    applicants: JSON.stringify(b.applicants || [])
+                }))
+            };
+        };
+
+        /**
+         * 로컬 스토리지 캐시 저장/복원 (오프라인 대비)
+         */
+        window.saveToLocalCache = function() {
+            try {
+                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({
+                    users: usersList,
+                    books: booksList,
+                    savedAt: new Date().toISOString()
+                }));
+            } catch (e) {
+                console.warn('로컬 캐시 저장 실패:', e);
+            }
+        };
+
+        window.loadFromLocalCache = function() {
+            try {
+                const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+                if (!raw) return;
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed.users) && Array.isArray(parsed.books)) {
+                    usersList = window.normalizeUsers(parsed.users);
+                    booksList = window.normalizeBooks(parsed.books);
+                }
+            } catch (e) {
+                console.warn('로컬 캐시 복원 실패:', e);
+            }
+        };
+
+        /**
+         * 데이터 구조 정규화 (누락 필드 보정)
+         */
+        window.normalizeUsers = function(list) {
+            return (list || []).map((u, idx) => ({
+                id: u.id ?? (Date.now() + idx),
+                family: u.family || '',
+                name: u.name || '',
+                budget: Number(u.budget) || 150000,
+                spent: Array.isArray(u.spent) && u.spent.length === 4 ? u.spent.map(v => Number(v) || 0) : [0, 0, 0, 0],
+                interests: Array.isArray(u.interests) ? u.interests : [],
+                receivedStatus: Array.isArray(u.receivedStatus) && u.receivedStatus.length === 4 ? u.receivedStatus : [false, false, false, false]
+            }));
+        };
+
+        window.normalizeBooks = function(list) {
+            return (list || []).map((b, idx) => ({
+                id: b.id ?? (Date.now() + idx),
+                title: b.title || '',
+                price: Number(b.price) || 0,
+                author: b.author || '',
+                date: b.date || '',
+                category: b.category || '교재',
+                applicants: Array.isArray(b.applicants) ? b.applicants : []
+            }));
+        };
+
+        /**
+         * 동기화 상태 UI 갱신
+         */
+        window.updateSyncStatusUI = function(state, text) {
+            const dot = document.getElementById('sync-dot');
+            const label = document.getElementById('sync-label');
+            const timeEl = document.getElementById('sync-time');
+            if (!dot || !label) return;
+
+            dot.className = 'w-2.5 h-2.5 rounded-full flex-shrink-0 ';
+            if (state === 'saving' || state === 'loading') {
+                dot.className += 'bg-amber-400 animate-ping';
+            } else if (state === 'synced') {
+                dot.className += 'bg-emerald-500';
+                lastSyncTime = new Date().toTimeString().slice(0, 8);
+            } else if (state === 'error') {
+                dot.className += 'bg-rose-500';
+            } else {
+                dot.className += 'bg-slate-400';
+            }
+
+            label.textContent = text;
+            if (timeEl) timeEl.textContent = lastSyncTime;
+        };
+
+        /**
+         * 데이터 변경 시 호출되는 자동 저장 스케줄러 (500ms 디바운스)
+         */
+        window.triggerAutoSave = function() {
+            window.saveToLocalCache();
+            if (autoSaveTimer) clearTimeout(autoSaveTimer);
+            window.updateSyncStatusUI('saving', '구글 시트 저장 대기...');
+            autoSaveTimer = setTimeout(() => {
+                window.saveToGoogleSheet({ silent: true });
+            }, 500);
+        };
+
+        /**
+         * 구글 시트(book)에 전체 데이터 저장
+         */
+        window.saveToGoogleSheet = async function(options = {}) {
+            const { silent = false, manual = false, isExit = false } = options;
+            if (autoSaveTimer) {
+                clearTimeout(autoSaveTimer);
+                autoSaveTimer = null;
+            }
+
+            window.saveToLocalCache();
+            isSavingToSheet = true;
+            window.updateSyncStatusUI('saving', '시트(book) 저장 중...');
+
+            const payload = window.buildSheetPayload();
+            const bodyStr = JSON.stringify(payload);
+
+            try {
+                // Google Apps Script CORS preflight 우회를 위해 text/plain 사용
+                const response = await fetch(GOOGLE_SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: bodyStr,
+                    redirect: 'follow'
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                window.updateSyncStatusUI('synced', '구글 시트(book) 저장됨');
+                if (manual) window.showMessage("구글 시트(book)에 데이터를 저장했습니다.");
+                isSavingToSheet = false;
+                return true;
+            } catch (primaryErr) {
+                // CORS 헤더 제한으로 응답 읽기만 막힌 경우 no-cors 모드로 재전송하여 저장 보장
+                try {
+                    await fetch(GOOGLE_SCRIPT_URL, {
+                        method: 'POST',
+                        mode: 'no-cors',
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                        body: bodyStr
+                    });
+
+                    window.updateSyncStatusUI('synced', '구글 시트(book) 전송됨');
+                    if (manual) window.showMessage("구글 시트(book)로 데이터를 전송했습니다.");
+                    isSavingToSheet = false;
+                    return true;
+                } catch (fallbackErr) {
+                    console.error('구글 시트 저장 오류:', primaryErr, fallbackErr);
+                    window.updateSyncStatusUI('error', '시트 저장 실패 (로컬 보존)');
+                    if (!silent || manual || isExit) {
+                        window.showMessage("네트워크 오류로 구글 시트 저장에 실패했습니다. (로컬에 임시 저장됨)", "error");
+                    }
+                    isSavingToSheet = false;
+                    return false;
+                }
+            }
+        };
+
+        /**
+         * 구글 시트(book)에서 저장된 데이터 불러오기
+         */
+        window.loadFromGoogleSheet = async function(options = {}) {
+            const { silent = false, manual = false } = options;
+            window.updateSyncStatusUI('loading', '시트(book) 불러오는 중...');
+
+            try {
+                const url = `${GOOGLE_SCRIPT_URL}?action=load&sheetName=${encodeURIComponent(GOOGLE_SHEET_NAME)}&sheet=${encodeURIComponent(GOOGLE_SHEET_NAME)}&_t=${Date.now()}`;
+                const response = await fetch(url, { method: 'GET', redirect: 'follow' });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                const text = await response.text();
+                let parsed = null;
+                try {
+                    parsed = JSON.parse(text);
+                } catch (jsonErr) {
+                    throw new Error("JSON 형식이 아닌 응답입니다.");
+                }
+
+                // 다양한 Apps Script 응답 구조 유연하게 파싱
+                let extractedUsers = null;
+                let extractedBooks = null;
+
+                if (parsed && Array.isArray(parsed.users) && Array.isArray(parsed.books)) {
+                    extractedUsers = parsed.users;
+                    extractedBooks = parsed.books;
+                } else if (parsed && parsed.data && Array.isArray(parsed.data.users) && Array.isArray(parsed.data.books)) {
+                    extractedUsers = parsed.data.users;
+                    extractedBooks = parsed.data.books;
+                } else if (parsed && typeof parsed.content === 'string') {
+                    const inner = JSON.parse(parsed.content);
+                    if (Array.isArray(inner.users) && Array.isArray(inner.books)) {
+                        extractedUsers = inner.users;
+                        extractedBooks = inner.books;
+                    }
+                }
+
+                if (extractedUsers && extractedBooks) {
+                    if (extractedUsers.length > 0 || extractedBooks.length > 0) {
+                        usersList = window.normalizeUsers(extractedUsers);
+                        booksList = window.normalizeBooks(extractedBooks);
+                        window.saveToLocalCache();
+                        if (receivingUser) {
+                            window.loadReceivingItems(receivingUser, receivingRound);
+                        }
+                        window.updateTabContent();
+                        window.updateSyncStatusUI('synced', '구글 시트(book) 동기화됨');
+                        if (!silent || manual) window.showMessage("구글 시트(book)에서 최신 데이터를 불러왔습니다.");
+                    } else {
+                        window.updateSyncStatusUI('synced', '시트(book) 연결됨 (초기 상태)');
+                        if (manual) window.showMessage("구글 시트(book)에 저장된 데이터가 아직 없습니다.");
+                    }
+                } else {
+                    window.updateSyncStatusUI('synced', '시트(book) 연결됨');
+                    if (manual) window.showMessage("구글 시트(book)와 연결되었습니다. 현재 데이터를 저장해 주세요.");
+                }
+            } catch (err) {
+                console.warn('구글 시트 불러오기 건너뜀:', err);
+                window.updateSyncStatusUI('synced', '시트(book) 자동저장 대기');
+                if (manual) {
+                    window.showMessage("시트에서 데이터를 읽지 못했습니다. (Apps Script doGet 설정 확인 필요)", "error");
+                }
+            }
+        };
+
+        // ==========================================
+        // 4. 커스텀 알림 & 확인 모달 (alert/confirm 대체)
+        // ==========================================
+        window.showMessage = function(text, type = "info") {
+            const box = document.getElementById('message-box');
+            const span = document.getElementById('message-text');
+            const icon = document.getElementById('message-icon');
+            if (!box || !span) return;
+
+            span.textContent = text;
+            if (icon) {
+                icon.className = type === "error" ? "text-rose-400 flex-shrink-0" : "text-emerald-400 flex-shrink-0";
+            }
+
+            box.classList.remove('hidden');
+            if (messageTimer) clearTimeout(messageTimer);
+            messageTimer = setTimeout(() => box.classList.add('hidden'), 3200);
+        };
+
+        window.showConfirmModal = function(message, onConfirm, title = "확인") {
+            const modal = document.getElementById('confirm-modal');
+            const titleEl = document.getElementById('confirm-modal-title');
+            const msgEl = document.getElementById('confirm-modal-message');
+            if (!modal || !msgEl) return;
+
+            titleEl.textContent = title;
+            msgEl.textContent = message;
+            confirmCallback = onConfirm;
+            modal.classList.remove('hidden');
+            lucide.createIcons();
+        };
+
+        window.closeConfirmModal = function(isConfirmed) {
+            const modal = document.getElementById('confirm-modal');
+            if (modal) modal.classList.add('hidden');
+            const cb = confirmCallback;
+            confirmCallback = null;
+            if (isConfirmed && typeof cb === 'function') {
+                cb();
+            }
+        };
+
+        window.openGasInfoModal = function() {
+            const modal = document.getElementById('gas-info-modal');
+            const urlDisplay = document.getElementById('gas-url-display');
+            const sampleEl = document.getElementById('gas-sample-code');
+            if (urlDisplay) urlDisplay.textContent = GOOGLE_SCRIPT_URL;
+            if (sampleEl) {
+                sampleEl.textContent =
+`function doPost(e) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var payload = JSON.parse(e.postData.contents);
+  var sheetName = payload.sheetName || "book";
+  var sheet = ss.getSheetByName(sheetName) || ss.insertSheet(sheetName);
+
+  // A1: 저장시각, B1: 전체 JSON 데이터 (자동 복원용)
+  sheet.getRange("A1").setValue(payload.timestamp || new Date().toISOString());
+  sheet.getRange("B1").setValue(JSON.stringify({
+    users: payload.users || [],
+    books: payload.books || []
+  }));
+
+  // 3행부터 도서 목록을 표 형태로 기록
+  sheet.getRange(3, 1, Math.max(sheet.getLastRow(), 3), 7).clearContent();
+  var header = [["ID", "도서명", "단가", "출판사", "출판일", "카테고리", "신청자내역"]];
+  sheet.getRange(3, 1, 1, 7).setValues(header);
+  if (payload.bookRows && payload.bookRows.length > 0) {
+    var rows = payload.bookRows.map(function(r) {
+      return [r.id, r.title, r.price, r.author, r.date, r.category, r.applicants];
+    });
+    sheet.getRange(4, 1, rows.length, 7).setValues(rows);
+  }
+
+  return ContentService
+    .createTextOutput(JSON.stringify({ status: "success", sheet: sheetName }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function doGet(e) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheetName = (e && e.parameter && e.parameter.sheetName) || "book";
+  var sheet = ss.getSheetByName(sheetName);
+  if (!sheet) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ users: [], books: [] }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  var raw = sheet.getRange("B1").getValue();
+  var output = raw ? raw : JSON.stringify({ users: [], books: [] });
+  return ContentService
+    .createTextOutput(output)
+    .setMimeType(ContentService.MimeType.JSON);
+}`;
+            }
+            if (modal) modal.classList.remove('hidden');
+            lucide.createIcons();
+        };
+
+        window.closeGasInfoModal = function() {
+            const modal = document.getElementById('gas-info-modal');
+            if (modal) modal.classList.add('hidden');
+        };
+
+        window.copyGasSampleCode = function() {
+            const codeEl = document.getElementById('gas-sample-code');
+            if (!codeEl) return;
+            const textarea = document.createElement('textarea');
+            textarea.value = codeEl.textContent;
+            document.body.appendChild(textarea);
+            textarea.select();
+            try {
+                document.execCommand('copy');
+                window.showMessage("Apps Script 참고 코드가 복사되었습니다.");
+            } catch (e) {
+                window.showMessage("복사에 실패했습니다.", "error");
+            }
+            document.body.removeChild(textarea);
+        };
+
+        // ==========================================
+        // 5. 탭 전환, 백업, 종료 로직
+        // ==========================================
+        window.setActiveTab = function(tab) {
+            activeTab = tab;
+            searchTerm = '';
+            editingUserId = null;
+            editingBookId = null;
+            tempUserData = { family: '', name: '', budget: 150000, interests: [] };
+            tempBookData = { title: '', price: '', author: '', date: '', category: '색칠북' };
+            if (tab === 'receiving' && receivingUser) {
+                window.loadReceivingItems(receivingUser, receivingRound);
+            }
+            window.renderNav();
+            window.renderHeader();
+            window.updateTabContent();
+            lucide.createIcons();
+        };
+
+        window.handleExportBackup = function() {
+            const data = { users: usersList, books: booksList, exportedAt: new Date().toISOString() };
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `문화누리_백업_${new Date().toISOString().slice(0, 10)}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.showMessage("JSON 백업 파일 다운로드가 시작되었습니다.");
+        };
+
+        /**
+         * 프로그램 종료: 구글 시트(book)에 최종 저장 후 종료
+         */
+        window.handleExitApp = async function() {
+            const exitScreen = document.getElementById('exit-screen');
+            const savingState = document.getElementById('exit-saving-state');
+            const doneState = document.getElementById('exit-done-state');
+            const doneDesc = document.getElementById('exit-done-desc');
+
+            exitScreen.classList.remove('hidden');
+            savingState.classList.remove('hidden');
+            doneState.classList.add('hidden');
+            lucide.createIcons();
+
+            // 1. 구글 시트(book)에 최종 데이터 저장 대기
+            const saved = await window.saveToGoogleSheet({ isExit: true });
+
+            // 2. 완료 화면 표시 및 창 닫기 시도
+            savingState.classList.add('hidden');
+            doneState.classList.remove('hidden');
+            if (!saved && doneDesc) {
+                doneDesc.innerHTML = '네트워크 문제로 구글 시트 저장을 확인하지 못했습니다.<br/>아래 버튼으로 JSON 백업을 저장해 두실 수 있습니다.';
+            } else if (doneDesc) {
+                doneDesc.innerHTML = '구글 시트(<strong>book</strong>)에 최종 데이터 저장이 완료되었습니다.<br/>브라우저 탭을 닫으셔도 좋습니다.';
+            }
+            lucide.createIcons();
+
+            setTimeout(() => {
+                try { window.close(); } catch (e) {}
+            }, 700);
+        };
+
+        window.handleReopenApp = function() {
+            document.getElementById('exit-screen').classList.add('hidden');
+            document.getElementById('sidebar-nav').style.display = '';
+            document.getElementById('main-frame').style.display = '';
+        };
+
+        // ==========================================
+        // 6. 헬퍼 함수
+        // ==========================================
+        window.escapeHtml = function(str) {
+            return String(str ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        };
+
+        window.getCategoryColor = function(cat) {
+            switch(cat) {
+                case '색칠북': return 'bg-pink-50 text-pink-600 border-pink-100';
+                case '컬러링북': return 'bg-purple-50 text-purple-600 border-purple-100';
+                case '필사북': return 'bg-emerald-50 text-emerald-600 border-emerald-100';
+                case '교재': return 'bg-sky-50 text-sky-600 border-sky-100';
+                case '국가': return 'bg-orange-50 text-orange-600 border-orange-100';
+                default: return 'bg-slate-50 text-slate-600 border-slate-100';
+            }
+        };
+
+        window.getProcessedUsers = function() {
+            const users = (usersList || []).map(user => {
+                const spentArray = user.spent || [0, 0, 0, 0];
+                const totalSpent = spentArray.reduce((a, b) => a + (Number(b) || 0), 0);
+                return { ...user, totalSpent, balance: (Number(user.budget) || 0) - totalSpent };
+            });
+            return users.sort((a, b) => (a.family || '').localeCompare(b.family || '') || (a.name || '').localeCompare(b.name || ''));
+        };
+
+        window.excelDateToJSDate = function(serial) {
+            if (!serial || isNaN(serial)) return serial;
+            const date = new Date(Math.round((serial - 25569) * 86400 * 1000));
+            const y = date.getFullYear();
+            const m = String(date.getMonth() + 1).padStart(2, '0');
+            const d = String(date.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        };
+
+        // ==========================================
+        // 7. 공통 UI 렌더링 (사이드바, 헤더, 탭 분기)
+        // ==========================================
+        window.renderNav = function() {
+            const nav = document.getElementById('nav-tabs');
+            const tabs = [
+                { id: 'dashboard', label: '현황 대시보드', icon: 'users' },
+                { id: 'purchase', label: '스마트 구입 신청', icon: 'shopping-cart' },
+                { id: 'receiving', label: '구입 확정', icon: 'check-circle-2' },
+                { id: 'user_mgmt', label: '대상자 관리', icon: 'user-plus' },
+                { id: 'book_mgmt', label: '도서 관리', icon: 'book-plus' }
+            ];
+            nav.innerHTML = tabs.map(tab => `
+                <button onclick="window.setActiveTab('${tab.id}')" class="w-full flex items-center space-x-2.5 md:space-x-3 px-3.5 md:px-4 py-3 rounded-xl transition-all font-bold ${activeTab === tab.id ? 'active-tab shadow-lg' : 'text-emerald-700 hover:bg-emerald-100/50'}">
+                    <i data-lucide="${tab.icon}" size="18" class="flex-shrink-0"></i>
+                    <span class="text-xs md:text-sm truncate">${tab.label}</span>
+                </button>
+            `).join('');
+        };
+
+        window.renderHeader = function() {
+            const header = document.getElementById('main-header');
+            const titles = {
+                dashboard: '전체 도서 구입 및 집행 현황',
+                purchase: '스마트 구입 신청',
+                receiving: '도서 구입 확정',
+                user_mgmt: '대상자 명단 관리',
+                book_mgmt: '도서 데이터 관리'
+            };
+
+            let actionBtns = '';
+            if (activeTab === 'book_mgmt') {
+                actionBtns = `
+                    <div class="flex gap-2 flex-wrap">
+                        <input type="file" id="excel-upload" class="hidden" accept=".xlsx, .xls, .csv" onchange="window.handleFileUpload(event)" />
+                        <label for="excel-upload" class="flex items-center gap-2 px-4 py-2.5 bg-emerald-500 text-white rounded-2xl font-bold text-xs cursor-pointer hover:bg-emerald-600 transition-all shadow-md">
+                            <i data-lucide="file-up" size="14"></i> 엑셀 업로드
+                        </label>
+                        <button onclick="window.handleBookExcelDownload()" class="flex items-center gap-2 px-4 py-2.5 bg-sky-500 text-white rounded-2xl font-bold text-xs hover:bg-sky-600 transition-all shadow-md">
+                            <i data-lucide="file-down" size="14"></i> 엑셀 다운로드
+                        </button>
+                    </div>
+                `;
+            } else if (activeTab === 'dashboard') {
+                actionBtns = `
+                    <button onclick="window.handleExportUserStatusExcel()" class="flex items-center gap-2 px-4 py-2.5 bg-emerald-50 border border-emerald-100 text-emerald-600 rounded-2xl font-bold text-xs hover:bg-emerald-100 transition-all shadow-sm">
+                        <i data-lucide="file-down" size="14"></i> 집행 현황 엑셀
+                    </button>
+                    <button onclick="window.handlePrintUserStatus()" class="flex items-center gap-2 px-4 py-2.5 bg-white border border-emerald-100 text-emerald-600 rounded-2xl font-bold text-xs md:text-sm hover:bg-emerald-50 transition-all shadow-sm">
+                        <i data-lucide="printer" size="15"></i> 집행 현황 인쇄
+                    </button>
+                    <button onclick="window.handleExportPurchaseListExcel()" class="flex items-center gap-2 px-4 py-2.5 bg-emerald-50 border border-emerald-100 text-emerald-600 rounded-2xl font-bold text-xs hover:bg-emerald-100 transition-all shadow-sm">
+                        <i data-lucide="file-down" size="14"></i> 구입 목록 엑셀
+                    </button>
+                    <button onclick="window.handlePrintReport()" class="flex items-center gap-2 px-4 py-2.5 bg-white border border-emerald-100 text-emerald-600 rounded-2xl font-bold text-xs md:text-sm hover:bg-emerald-50 transition-all shadow-sm">
+                        <i data-lucide="printer" size="15"></i> 구입 목록 인쇄
+                    </button>
+                `;
+            } else if (activeTab === 'purchase') {
+                actionBtns = `
+                    <button onclick="window.handlePrintCart()" class="flex items-center gap-2 px-4 py-2.5 bg-white border border-emerald-100 text-emerald-600 rounded-2xl font-bold text-xs md:text-sm hover:bg-emerald-50 transition-all shadow-sm">
+                        <i data-lucide="printer" size="15"></i> 신청 목록 인쇄
+                    </button>
+                    <button onclick="window.handleExportPurchaseListExcel()" class="flex items-center gap-2 px-4 py-2.5 bg-emerald-50 border border-emerald-100 text-emerald-600 rounded-2xl font-bold text-xs hover:bg-emerald-100 transition-all shadow-sm">
+                        <i data-lucide="file-down" size="14"></i> 확정 목록 엑셀
+                    </button>
+                    <button onclick="window.handlePrintReport()" class="flex items-center gap-2 px-4 py-2.5 bg-emerald-500 border border-emerald-500 text-white rounded-2xl font-bold text-xs md:text-sm hover:bg-emerald-600 transition-all shadow-sm">
+                        <i data-lucide="printer" size="15"></i> 확정 목록 인쇄
+                    </button>
+                `;
+            } else if (activeTab === 'receiving') {
+                actionBtns = `
+                    <button onclick="window.handleExportPurchaseListExcel()" class="flex items-center gap-2 px-4 py-2.5 bg-emerald-50 border border-emerald-100 text-emerald-600 rounded-2xl font-bold text-xs hover:bg-emerald-100 transition-all shadow-sm">
+                        <i data-lucide="file-down" size="14"></i> 확정 목록 엑셀
+                    </button>
+                    <button onclick="window.handlePrintReport()" class="flex items-center gap-2 px-4 py-2.5 bg-white border border-emerald-100 text-emerald-600 rounded-2xl font-bold text-xs md:text-sm hover:bg-emerald-50 transition-all shadow-sm">
+                        <i data-lucide="printer" size="15"></i> 확정 목록 인쇄
+                    </button>
+                `;
+            }
+
+            header.innerHTML = `
+                <div>
+                    <h2 class="text-xl md:text-2xl font-black text-emerald-950">${titles[activeTab]}</h2>
+                    <p class="text-emerald-600/60 text-xs md:text-sm mt-1 font-medium italic tracking-tight">Culture Nuri Management System · Google Sheet (book) Auto-Sync</p>
+                </div>
+                <div class="flex items-center gap-2 text-slate-800 flex-wrap justify-start md:justify-end">
+                    ${actionBtns}
+                </div>
+            `;
+            lucide.createIcons();
+        };
+
+        window.updateTabContent = function() {
+            const container = document.getElementById('content-area');
+            const users = window.getProcessedUsers();
+
+            switch(activeTab) {
+                case 'dashboard': window.renderDashboard(container, users); break;
+                case 'purchase': window.renderPurchase(container, users); break;
+                case 'receiving': window.renderReceiving(container, users); break;
+                case 'user_mgmt': window.renderUserMgmt(container, users); break;
+                case 'book_mgmt': window.renderBookMgmt(container); break;
+            }
+            lucide.createIcons();
+        };
+
+        // ==========================================
+        // 8. 탭 1: 현황 대시보드
+        // ==========================================
+        window.renderDashboard = function(container, users) {
+            const totalSpent = users.reduce((a, b) => a + b.totalSpent, 0);
+            const totalBalance = users.reduce((a, b) => a + b.balance, 0);
+
+            container.innerHTML = `
+                <div class="space-y-6">
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div class="bg-white p-6 rounded-3xl border border-emerald-50 shadow-sm flex items-center space-x-4">
+                            <div class="bg-emerald-50 p-4 rounded-2xl text-emerald-600"><i data-lucide="wallet"></i></div>
+                            <div>
+                                <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">총 구입액</p>
+                                <p class="text-2xl font-black text-emerald-900">${totalSpent.toLocaleString()}원</p>
+                            </div>
+                        </div>
+                        <div class="bg-white p-6 rounded-3xl border border-emerald-50 shadow-sm flex items-center space-x-4">
+                            <div class="bg-orange-50 p-4 rounded-2xl text-orange-500"><i data-lucide="coins"></i></div>
+                            <div>
+                                <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">전체 잔액</p>
+                                <p class="text-2xl font-black text-orange-600">${totalBalance.toLocaleString()}원</p>
+                            </div>
+                        </div>
+                        <div class="bg-white p-6 rounded-3xl border border-emerald-50 shadow-sm flex items-center space-x-4">
+                            <div class="bg-emerald-50 p-4 rounded-2xl text-emerald-600"><i data-lucide="book-open"></i></div>
+                            <div>
+                                <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">등록 도서</p>
+                                <p class="text-2xl font-black text-emerald-900">${booksList.length}권</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="space-y-3">
+                        <h3 class="text-lg font-black text-emerald-950 flex items-center gap-2 ml-1">
+                            <i data-lucide="users" size="20" class="text-emerald-500"></i> 이용자별 집행 현황
+                            <span class="text-xs font-medium text-slate-400 ml-1">(행 클릭 시 상세 내역 확인 및 취소 가능)</span>
+                        </h3>
+                        <div class="bg-white rounded-3xl border border-emerald-50 shadow-sm overflow-hidden overflow-x-auto">
+                            <table class="w-full text-left min-w-[780px]">
+                                <thead class="bg-emerald-50/30 text-emerald-800 text-[10px] font-black uppercase tracking-widest text-center">
+                                    <tr>
+                                        <th class="px-4 py-5 text-left">가정</th>
+                                        <th class="px-4 py-5 text-left">성명</th>
+                                        <th class="px-2 py-5 text-center">1차</th>
+                                        <th class="px-2 py-5 text-center">2차</th>
+                                        <th class="px-2 py-5 text-center">3차</th>
+                                        <th class="px-2 py-5 text-center">4차</th>
+                                        <th class="px-4 py-5 text-right font-bold text-orange-600">잔액</th>
+                                        <th class="px-4 py-5">관심사</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-emerald-50">
+                                    ${users.map(u => `
+                                        <tr class="hover:bg-emerald-50/20 transition-colors cursor-pointer" onclick="window.showUserDetail(${u.id})">
+                                            <td class="px-4 py-4 font-bold text-emerald-600">${window.escapeHtml(u.family)}</td>
+                                            <td class="px-4 py-4 font-bold text-emerald-950">${window.escapeHtml(u.name)}</td>
+                                            <td class="px-2 py-4 text-center font-mono text-slate-500">${(u.spent ? u.spent[0] : 0).toLocaleString()}</td>
+                                            <td class="px-2 py-4 text-center font-mono text-slate-500">${(u.spent ? u.spent[1] : 0).toLocaleString()}</td>
+                                            <td class="px-2 py-4 text-center font-mono text-slate-500">${(u.spent ? u.spent[2] : 0).toLocaleString()}</td>
+                                            <td class="px-2 py-4 text-center font-mono text-slate-500">${(u.spent ? u.spent[3] : 0).toLocaleString()}</td>
+                                            <td class="px-4 py-4 text-right font-black text-orange-500 font-mono">${u.balance.toLocaleString()}원</td>
+                                            <td class="px-4 py-4 text-center">
+                                                <div class="flex gap-1 justify-center flex-wrap">
+                                                    ${(u.interests || []).map(it => `<span class="text-[9px] px-1.5 py-0.5 rounded-full font-bold border ${window.getCategoryColor(it)}">${window.escapeHtml(it)}</span>`).join('')}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- 데이터 관리 및 구글 시트 센터 -->
+                    <div class="bg-emerald-50/40 p-6 rounded-[2.5rem] border border-emerald-100 mt-10 space-y-5">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                            <h3 class="text-lg font-black flex items-center gap-3 text-emerald-900">
+                                <i data-lucide="database" class="text-emerald-500"></i> 데이터 관리 및 구글 시트(book) 연동 센터
+                            </h3>
+                            <button onclick="window.openGasInfoModal()" class="text-xs font-bold text-emerald-600 hover:text-emerald-800 underline flex items-center gap-1 w-fit">
+                                <i data-lucide="settings" size="13"></i> 연동 URL / Apps Script 가이드 보기
+                            </button>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                            <button onclick="window.saveToGoogleSheet({ manual: true })" class="bg-emerald-500 p-4 rounded-2xl shadow-sm font-black text-white hover:bg-emerald-600 transition-all text-xs md:text-sm flex items-center justify-center gap-2">
+                                <i data-lucide="cloud-upload" size="16"></i> 시트(book) 지금 저장
+                            </button>
+                            <button onclick="window.loadFromGoogleSheet({ manual: true })" class="bg-white p-4 rounded-2xl shadow-sm border border-emerald-200 font-bold text-emerald-700 hover:bg-emerald-50 transition-all text-xs md:text-sm flex items-center justify-center gap-2">
+                                <i data-lucide="cloud-download" size="16"></i> 시트에서 불러오기
+                            </button>
+                            <button onclick="window.handleExportBackup()" class="bg-white p-4 rounded-2xl shadow-sm border border-emerald-100 font-bold text-emerald-600 hover:bg-emerald-50 transition-all text-xs md:text-sm flex items-center justify-center gap-2">
+                                <i data-lucide="download" size="16"></i> 백업 다운로드
+                            </button>
+                            <div class="relative">
+                                <input type="file" id="backup-import-input" class="hidden" accept=".json" onchange="window.handleImportBackup(event)" />
+                                <button onclick="document.getElementById('backup-import-input').click()" class="w-full h-full bg-white p-4 rounded-2xl shadow-sm border border-emerald-100 font-bold text-emerald-600 hover:bg-emerald-50 transition-all text-xs md:text-sm flex items-center justify-center gap-2">
+                                    <i data-lucide="upload" size="16"></i> 백업 업로드
+                                </button>
+                            </div>
+                            <button onclick="window.handleResetPurchaseData()" class="bg-white p-4 rounded-2xl shadow-sm border border-rose-100 font-bold text-rose-600 hover:bg-rose-50 transition-all text-xs md:text-sm flex items-center justify-center gap-2">
+                                <i data-lucide="rotate-ccw" size="16"></i> 구입 기록 초기화
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        };
+
+        // ==========================================
+        // 9. 탭 2: 스마트 구입 신청
+        // ==========================================
+        window.renderPurchase = function(container, users) {
+            container.innerHTML = `
+                <div id="purchase-layout" class="grid grid-cols-1 lg:grid-cols-12 gap-6 no-print text-sm">
+                    <div class="lg:col-span-4 space-y-6" id="p-sidebar-area"></div>
+                    <div class="lg:col-span-8 bg-white rounded-[2.5rem] border border-emerald-100 shadow-sm overflow-hidden flex flex-col text-sm">
+                        <div class="p-5 border-b border-emerald-50 bg-[#fafffe] flex flex-wrap items-center gap-4">
+                            <div class="relative flex-1 min-w-[200px]">
+                                <i data-lucide="search" class="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-400" size="18"></i>
+                                <input type="text" id="p-search-input" placeholder="도서명 또는 출판사 검색..." 
+                                    oninput="window.handleSearchInput(this.value)" 
+                                    class="w-full pl-12 pr-4 py-3 bg-white border border-emerald-100 rounded-2xl outline-none focus:ring-2 focus:ring-emerald-400 font-bold transition-all" value="${window.escapeHtml(searchTerm)}">
+                            </div>
+                        </div>
+                        <div id="p-book-list-area" class="overflow-y-auto max-h-[650px] divide-y divide-emerald-50"></div>
+                    </div>
+                </div>
+            `;
+            window.updatePurchaseSidebar(users);
+            window.updatePurchaseBookList();
+        };
+
+        window.handleSearchInput = function(val) {
+            searchTerm = val;
+            window.updatePurchaseBookList();
+        };
+
+        /**
+         * 도서별 총 신청 인원수 계산 (기존 확정 인원 + 현재 장바구니 대기 인원 중복 제거 합산)
+         */
+        window.getTotalBookApplicantCount = function(bookId) {
+            const book = booksList.find(b => b.id == bookId);
+            const names = new Set();
+            if (book && Array.isArray(book.applicants)) {
+                book.applicants.forEach(a => names.add(typeof a === 'object' ? a.name : a));
+            }
+            cart.filter(i => i.book.id == bookId).forEach(i => names.add(i.userName));
+            return names.size;
+        };
+
+        window.updatePurchaseSidebar = function(users) {
+            const sidebar = document.getElementById('p-sidebar-area');
+            if (!sidebar) return;
+            const cartTotal = cart.reduce((a, b) => a + (Number(b.book.price) || 0), 0);
+            const selectedUserObj = users.find(u => u.name === purchaseUser);
+
+            // 선택된 대상자의 기존 구입 내역 (개별 삭제 버튼 포함)
+            let historyHtml = '';
+            if (purchaseUser && selectedUserObj) {
+                const boughtBooks = booksList.filter(b => 
+                    (b.applicants || []).some(app => (typeof app === 'object' ? app.name : app) === purchaseUser)
+                );
+
+                if (boughtBooks.length > 0) {
+                    historyHtml = `
+                        <div class="bg-white p-6 rounded-3xl border border-emerald-100 shadow-sm mt-6">
+                            <h3 class="font-black mb-4 text-emerald-950 flex items-center gap-2">
+                                <i data-lucide="list-checks" size="18" class="text-emerald-500"></i> ${window.escapeHtml(purchaseUser)}님의 기존 구입 내역
+                            </h3>
+                            <div class="space-y-3 max-h-[300px] overflow-y-auto pr-1 no-scrollbar">
+                    `;
+                    
+                    [1, 2, 3, 4].forEach(r => {
+                        const booksInRound = boughtBooks.filter(b => 
+                            (b.applicants || []).some(app => 
+                                (typeof app === 'object' && app.name === purchaseUser && app.round === r) || 
+                                (typeof app !== 'object' && app === purchaseUser && r === 1)
+                            )
+                        );
+                        
+                        if (booksInRound.length > 0) {
+                            const roundTotal = booksInRound.reduce((sum, b) => {
+                                const app = (b.applicants || []).find(a => (typeof a === 'object' ? a.name === purchaseUser && a.round === r : a === purchaseUser && r === 1));
+                                const prc = (typeof app === 'object' && app.actualPrice !== undefined) ? Number(app.actualPrice) : (Number(b.price) || 0);
+                                return sum + prc;
+                            }, 0);
+                            historyHtml += `
+                                <div class="bg-slate-50 rounded-2xl p-3 border border-slate-100">
+                                    <div class="flex justify-between items-center mb-2 border-b border-slate-200 pb-1.5">
+                                        <span class="text-[11px] font-black text-emerald-700">${r}차 구입</span>
+                                        <span class="text-[10px] font-bold text-slate-500 font-mono">${roundTotal.toLocaleString()}원</span>
+                                    </div>
+                                    <ul class="space-y-1.5">
+                                        ${booksInRound.map(b => {
+                                            const app = (b.applicants || []).find(a => (typeof a === 'object' ? a.name === purchaseUser && a.round === r : a === purchaseUser && r === 1));
+                                            const prc = (typeof app === 'object' && app.actualPrice !== undefined) ? Number(app.actualPrice) : (Number(b.price) || 0);
+                                            return `
+                                                <li class="text-[11px] text-slate-700 flex justify-between gap-2 items-center">
+                                                    <span class="truncate flex-1 font-medium">- ${window.escapeHtml(b.title)}</span>
+                                                    <span class="font-bold text-emerald-600 font-mono whitespace-nowrap">${prc.toLocaleString()}</span>
+                                                    <button onclick="window.handleCancelPurchase(${b.id}, ${selectedUserObj.id})" class="text-rose-500 hover:text-white bg-rose-50 hover:bg-rose-500 px-2 py-0.5 rounded text-[10px] font-black ml-1 transition-colors">삭제</button>
+                                                </li>
+                                            `;
+                                        }).join('')}
+                                    </ul>
+                                </div>
+                            `;
+                        }
+                    });
+                    historyHtml += `</div></div>`;
+                }
+            }
+
+            // 일괄 장바구니 (도서별 총 신청 인원수 배지 포함)
+            const groupedCart = {};
+            cart.forEach(item => {
+                if (!groupedCart[item.userName]) groupedCart[item.userName] = [];
+                groupedCart[item.userName].push(item);
+            });
+
+            let cartHtml = '';
+            if (Object.keys(groupedCart).length === 0) {
+                cartHtml = '<p class="text-center opacity-60 italic py-4 text-emerald-100">도서를 담아주세요</p>';
+            } else {
+                for (const [uName, items] of Object.entries(groupedCart)) {
+                    const uTotal = items.reduce((sum, i) => sum + (Number(i.book.price) || 0), 0);
+                    const uRound = items[0].round + 1;
+                    const uObj = usersList.find(u => u.name === uName);
+                    const uId = uObj ? uObj.id : '';
+                    cartHtml += `
+                        <div class="bg-white/20 p-3 rounded-xl border border-white/15 mb-2">
+                            <div class="flex justify-between items-center mb-2 border-b border-white/20 pb-1">
+                                <span class="font-black text-emerald-50 text-xs">${window.escapeHtml(uName)} (${uRound}차)</span>
+                                <span class="font-bold text-white text-xs font-mono">${uTotal.toLocaleString()}원</span>
+                            </div>
+                            <ul class="space-y-1.5">
+                                ${items.map(item => {
+                                    const totalAppCount = window.getTotalBookApplicantCount(item.book.id);
+                                    return `
+                                        <li class="flex justify-between items-center gap-1.5 text-white text-[11px]">
+                                            <span class="flex-1 truncate">- ${window.escapeHtml(item.book.title)}</span>
+                                            <span class="bg-white/25 text-white px-1.5 py-0.5 rounded-md text-[9px] font-black whitespace-nowrap">총 ${totalAppCount}명</span>
+                                            <button onclick="window.handleRemoveFromCart(${uId}, ${item.book.id})" class="text-emerald-100 hover:text-white font-bold text-xs px-1">✕</button>
+                                        </li>
+                                    `;
+                                }).join('')}
+                            </ul>
+                        </div>
+                    `;
+                }
+            }
+
+            sidebar.innerHTML = `
+                <div class="bg-white p-6 rounded-3xl border border-emerald-100 shadow-sm space-y-5">
+                    <div>
+                        <label class="block text-[11px] font-black text-emerald-800/40 uppercase tracking-widest mb-3">대상자 선택</label>
+                        <select onchange="window.handlePurchaseUserSelect(this.value)" class="w-full px-4 py-3 bg-emerald-50/50 border border-emerald-100 rounded-2xl font-black text-emerald-900 outline-none">
+                            <option value="">대상자를 선택하세요</option>
+                            ${users.map(u => `<option value="${window.escapeHtml(u.name)}" ${purchaseUser === u.name ? 'selected' : ''}>${window.escapeHtml(u.name)} (잔액: ${u.balance.toLocaleString()}원)</option>`).join('')}
+                        </select>
+                        <div class="grid grid-cols-4 gap-2 mt-4">
+                            ${[1, 2, 3, 4].map(r => `<button onclick="window.handleRoundSelect(${r-1})" class="py-2 rounded-xl text-xs font-black border transition-all ${purchaseRound === r-1 ? 'bg-emerald-500 border-emerald-500 text-white shadow-sm' : 'bg-white border-emerald-100 text-emerald-400 hover:bg-emerald-50'}">${r}차</button>`).join('')}
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-emerald-500 text-white p-6 md:p-8 rounded-[2.5rem] shadow-2xl shadow-emerald-200 space-y-6">
+                    <h3 class="font-black flex items-center gap-2 text-lg"><i data-lucide="shopping-cart"></i> 일괄 장바구니</h3>
+                    <div class="space-y-1 max-h-[220px] overflow-y-auto pr-1 no-scrollbar text-xs">
+                        ${cartHtml}
+                    </div>
+                    <div class="pt-6 border-t border-white/20 text-center">
+                        <div class="flex justify-between items-center font-black mb-4">
+                            <span class="text-[10px] opacity-80 uppercase tracking-widest">총 일괄 합계</span>
+                            <span class="text-2xl md:text-3xl font-black font-mono">${cartTotal.toLocaleString()}원</span>
+                        </div>
+                        <button onclick="window.handleCompletePurchaseAction()" ${cart.length === 0 ? 'disabled' : ''} class="w-full py-4 md:py-5 bg-white text-emerald-600 rounded-3xl font-black text-lg md:text-xl disabled:opacity-30 shadow-xl active:scale-95 transition-all">일괄 구입 확정</button>
+                    </div>
+                </div>
+                ${historyHtml}
+            `;
+            lucide.createIcons();
+        };
+
+        window.updatePurchaseBookList = function() {
+            const listArea = document.getElementById('p-book-list-area');
+            if (!listArea) return;
+
+            const searchLower = searchTerm.toLowerCase();
+            let filtered = [...booksList].filter(book => {
+                return book.title.toLowerCase().includes(searchLower) || (book.author && book.author.toLowerCase().includes(searchLower));
+            });
+
+            const userObj = usersList.find(u => u.name === purchaseUser);
+
+            filtered.sort((a, b) => {
+                const aApps = a.applicants || [];
+                const bApps = b.applicants || [];
+
+                const aBought = purchaseUser && aApps.some(app => (typeof app === 'object' ? app.name : app) === purchaseUser) ? 1 : 0;
+                const bBought = purchaseUser && bApps.some(app => (typeof app === 'object' ? app.name : app) === purchaseUser) ? 1 : 0;
+                if (aBought !== bBought) return aBought - bBought;
+
+                const aPop = aApps.length;
+                const bPop = bApps.length;
+                if (aPop !== bPop) return bPop - aPop;
+
+                if (userObj) {
+                    const aInt = (userObj.interests || []).includes(a.category) ? 1 : 0;
+                    const bInt = (userObj.interests || []).includes(b.category) ? 1 : 0;
+                    if (aInt !== bInt) return bInt - aInt;
+                }
+
+                return (b.date || '0').localeCompare(a.date || '0') || a.title.localeCompare(b.title);
+            });
+
+            let recommended = [], regular = [];
+            if (userObj) {
+                recommended = filtered.filter(b => (userObj.interests || []).includes(b.category));
+                regular = filtered.filter(b => !(userObj.interests || []).includes(b.category));
+            } else {
+                regular = filtered;
+            }
+
+            listArea.innerHTML = `
+                ${recommended.length > 0 ? `<div class="bg-emerald-50/30 px-5 py-3 font-black text-emerald-600 text-[10px]">관심분야 추천 도서 (인기/최신순)</div>${recommended.map(b => window.getBookItemHtml(b, true)).join('')}` : ''}
+                <div class="px-5 py-3 text-[10px] font-black text-slate-400 bg-slate-50 uppercase">전체 도서 목록 (${regular.length}권)</div>
+                ${regular.length > 0 ? regular.map(b => window.getBookItemHtml(b, false)).join('') : '<div class="p-10 text-center text-slate-400 font-bold text-xs">검색 결과가 없습니다.</div>'}
+            `;
+            lucide.createIcons();
+        };
+
+        window.getBookItemHtml = function(book, isRec) {
+            const inCart = cart.some(i => i.book.id == book.id && i.userName === purchaseUser);
+            const safeApplicants = book.applicants || [];
+            const boughtBySelf = purchaseUser && safeApplicants.some(app => (typeof app === 'object' ? app.name : app) === purchaseUser);
+            const totalPopCount = safeApplicants.length;
+            const currentUserObj = usersList.find(u => u.name === purchaseUser);
+
+            const roundGroups = { 1: [], 2: [], 3: [], 4: [] };
+            safeApplicants.forEach(app => {
+                const name = typeof app === 'object' ? app.name : app;
+                const round = typeof app === 'object' ? app.round : 1;
+                if (roundGroups[round]) roundGroups[round].push(name);
+            });
+
+            const roundInfoHtml = [1, 2, 3, 4].map(r => {
+                if (roundGroups[r].length === 0) return '';
+                return `<div class="flex items-center gap-1.5 mt-0.5">
+                    <span class="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-black border border-slate-200 text-[9px]">${r}차: ${roundGroups[r].length}명</span>
+                    <span class="text-slate-400 font-medium truncate max-w-[260px] text-[9px]">${window.escapeHtml(roundGroups[r].join(', '))}</span>
+                </div>`;
+            }).join('');
+
+            const actionButton = boughtBySelf && currentUserObj
+                ? `<button onclick="window.handleCancelPurchase(${book.id}, ${currentUserObj.id})" class="flex-shrink-0 px-4 py-2.5 rounded-xl text-xs font-black transition-all bg-rose-50 text-rose-500 border border-rose-100 shadow-sm hover:bg-rose-500 hover:text-white ml-3">신청 취소</button>`
+                : `<button onclick="window.handleAddToCart(${book.id})" class="flex-shrink-0 px-5 py-2.5 rounded-xl text-xs font-black transition-all ${inCart ? 'bg-slate-100 text-slate-500' : 'bg-emerald-50 text-emerald-600 border border-emerald-100 shadow-sm hover:bg-emerald-500 hover:text-white'} ml-3">
+                    ${inCart ? '제외' : '담기'}
+                   </button>`;
+
+            return `
+                <div class="p-4 flex items-center justify-between hover:bg-emerald-50/5 transition-colors group ${boughtBySelf ? 'bg-slate-50/70' : ''} text-sm">
+                    <div class="flex items-center gap-3 md:gap-4 flex-1 min-w-0">
+                        <div class="w-11 h-11 flex-shrink-0 flex items-center justify-center rounded-xl ${isRec ? 'bg-white border border-emerald-100 shadow-sm text-emerald-500 font-black' : 'bg-slate-50 text-slate-300'}">
+                            ${isRec ? totalPopCount : '<i data-lucide="book-open" size="18"></i>'}
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-2">
+                                <h4 class="font-black text-slate-900 text-sm truncate">${window.escapeHtml(book.title)}</h4>
+                                ${totalPopCount >= 3 ? `<span class="bg-rose-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full flex-shrink-0 shadow-sm">BEST</span>` : ''}
+                            </div>
+                            <div class="flex flex-wrap gap-2 items-center mt-1">
+                                <span class="text-[8px] px-1.5 py-0.5 rounded-full font-bold border ${window.getCategoryColor(book.category)}">${window.escapeHtml(book.category)}</span>
+                                <span class="text-[10px] font-black text-emerald-600 font-mono">${(book.price || 0).toLocaleString()}원</span>
+                                <span class="text-[10px] text-slate-400 font-bold">출판사: ${window.escapeHtml(book.author || '미상')} | 출판일: ${window.escapeHtml(book.date || '미상')}</span>
+                            </div>
+                            <div class="mt-1.5 text-[10px] text-slate-500 font-bold">
+                                ${totalPopCount > 0 ? roundInfoHtml : '<span class="text-slate-300 italic font-medium">아직 신청자가 없습니다.</span>'}
+                            </div>
+                        </div>
+                    </div>
+                    ${actionButton}
+                </div>
+            `;
+        };
+
+        window.handleCancelPurchase = function(bookId, userId) {
+            const userObj = userId ? usersList.find(u => u.id == userId) : usersList.find(u => u.name === purchaseUser);
+            if (!userObj) return;
+            const targetUser = userObj.name;
+
+            window.showConfirmModal(`'${targetUser}'님의 해당 도서 구입 내역(확정)을 취소하시겠습니까?`, () => {
+                const book = booksList.find(b => b.id == bookId);
+                if (!book) return;
+
+                const applicantIndex = (book.applicants || []).findIndex(a => (typeof a === 'object' ? a.name : a) === targetUser);
+                if (applicantIndex === -1) return;
+
+                const applicantInfo = book.applicants[applicantIndex];
+                const roundIndex = (typeof applicantInfo === 'object' ? applicantInfo.round : 1) - 1;
+                const deductPrice = (typeof applicantInfo === 'object' && applicantInfo.actualPrice !== undefined)
+                    ? Number(applicantInfo.actualPrice)
+                    : (Number(book.price) || 0);
+
+                book.applicants.splice(applicantIndex, 1);
+
+                if (userObj.spent && userObj.spent[roundIndex] !== undefined) {
+                    userObj.spent[roundIndex] = Math.max(0, userObj.spent[roundIndex] - deductPrice);
+                }
+
+                window.triggerAutoSave();
+                window.updateTabContent();
+
+                if (activeTab === 'dashboard' && !document.getElementById('modal-container').classList.contains('hidden')) {
+                    window.showUserDetail(userObj.id);
+                }
+                window.showMessage("구입 내역이 취소되었습니다.");
+            }, "구입 취소 확인");
+        };
+
+        // ==========================================
+        // 10. 탭 3: 구입 확정 (실제 단가 수정 및 도서 단가 연동)
+        // ==========================================
+        window.renderReceiving = function(container, users) {
+            const selectedUserObj = users.find(u => u.name === receivingUser);
+            const totalCalc = receivingItems.reduce((sum, item) => sum + (Number(item.actualPrice) || 0), 0);
+            const isCompleted = selectedUserObj?.receivedStatus?.[receivingRound];
+            const statusType = isCompleted ? '완료' : (receivingItems.length > 0 ? '대기' : '미신청');
+
+            const statusBadge = !receivingUser ? '' : `
+                <div class="pt-2">
+                    <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black border ${
+                        statusType === '완료' ? 'bg-sky-50 text-sky-600 border-sky-200' :
+                        statusType === '대기' ? 'bg-orange-50 text-orange-600 border-orange-200' :
+                        'bg-slate-50 text-slate-500 border-slate-200'
+                    }">
+                        <i data-lucide="${statusType === '완료' ? 'check-circle-2' : (statusType === '대기' ? 'alert-circle' : 'x-circle')}" size="14"></i>
+                        ${statusType === '완료' ? '확정완료 내역' : statusType === '대기' ? '확정대기 상태' : '신청 내역 없음'}
+                    </span>
+                </div>
+            `;
+
+            container.innerHTML = `
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 text-sm">
+                    <div class="lg:col-span-4 space-y-6">
+                        <div class="bg-white p-6 rounded-3xl border border-emerald-100 shadow-sm space-y-5">
+                            <div>
+                                <label class="block text-[11px] font-black text-emerald-800/40 uppercase tracking-widest mb-3">대상자 선택</label>
+                                <select onchange="window.handleReceivingUserChange(this.value)" class="w-full px-4 py-3 bg-emerald-50/50 border border-emerald-100 rounded-2xl font-black text-emerald-900 outline-none">
+                                    <option value="">대상자를 선택하세요</option>
+                                    ${users.map(u => `<option value="${window.escapeHtml(u.name)}" ${receivingUser === u.name ? 'selected' : ''}>${window.escapeHtml(u.name)} (잔액: ${u.balance.toLocaleString()}원)</option>`).join('')}
+                                </select>
+                                <div class="grid grid-cols-4 gap-2 mt-4">
+                                    ${[1, 2, 3, 4].map(r => `<button onclick="window.handleReceivingRoundChange(${r-1})" class="py-2 rounded-xl text-xs font-black border transition-all ${receivingRound === r-1 ? 'bg-emerald-500 border-emerald-500 text-white shadow-sm' : 'bg-white border-emerald-100 text-emerald-400 hover:bg-emerald-50'}">${r}차</button>`).join('')}
+                                </div>
+                                ${statusBadge}
+                            </div>
+                        </div>
+
+                        <div class="bg-emerald-500 text-white p-6 md:p-8 rounded-[2.5rem] shadow-2xl shadow-emerald-200 space-y-6">
+                            <h3 class="font-black flex items-center gap-2 text-lg"><i data-lucide="check-circle-2"></i> 최종 확정 요약</h3>
+                            <div id="receiving-summary-list" class="space-y-2.5 max-h-[240px] overflow-y-auto pr-1 no-scrollbar text-xs">
+                                ${window.getReceivingSummaryHtml()}
+                            </div>
+                            <div class="pt-6 border-t border-white/20 text-center">
+                                <div class="flex justify-between items-center font-black mb-4">
+                                    <span class="text-[10px] opacity-80 uppercase tracking-widest">최종 반영액</span>
+                                    <span id="receiving-total-display" class="text-2xl md:text-3xl font-black font-mono">${totalCalc.toLocaleString()}원</span>
+                                </div>
+                                <button onclick="window.handleConfirmReceiving()" ${!receivingUser ? 'disabled' : ''} class="w-full py-4 md:py-5 bg-white text-emerald-600 rounded-3xl font-black text-lg md:text-xl disabled:opacity-30 shadow-xl active:scale-95 transition-all">최종 확정 처리</button>
+                                <p class="text-[10px] text-emerald-100/80 font-medium mt-3">* 확정 시 변경된 실제 단가가 도서 관리 기준 단가에도 자동 반영됩니다.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="lg:col-span-8 space-y-6">
+                        <!-- 실제 구입가 수정 영역 (수량 없음) -->
+                        <div class="bg-white rounded-[2.5rem] border border-emerald-100 shadow-sm p-6">
+                            <h3 class="font-black text-lg text-emerald-950 mb-5 flex items-center gap-2">
+                                <i data-lucide="edit-2" class="text-emerald-500" size="20"></i> 금액 변동 (실제 구입가)
+                            </h3>
+                            <div class="space-y-3">
+                                ${!receivingUser ? `
+                                    <div class="text-center py-10 bg-slate-50 rounded-3xl border border-slate-100 text-slate-400 font-bold text-xs">좌측에서 대상자와 차수를 선택해주세요.</div>
+                                ` : receivingItems.length === 0 ? `
+                                    <div class="text-center py-10 bg-slate-50 rounded-3xl border border-slate-100 text-slate-400 font-bold text-xs">해당 차수에 기록된 내역이 없습니다.<br/>아래에서 추가/대체 도서를 검색하여 내역에 추가할 수 있습니다.</div>
+                                ` : receivingItems.map(item => `
+                                    <div class="flex flex-col sm:flex-row gap-4 items-start sm:items-center bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                                        <div class="flex-1 w-full min-w-0">
+                                            <span class="text-[9px] px-2 py-0.5 rounded-full font-black border mb-1.5 inline-block ${window.getCategoryColor(item.category)}">${window.escapeHtml(item.category)}</span>
+                                            <h4 class="font-black text-emerald-950 text-sm truncate">${window.escapeHtml(item.title)}</h4>
+                                            <div class="text-[10px] text-slate-500 font-medium mt-1">기존 기준 단가: ${Number(item.originalPrice || 0).toLocaleString()}원</div>
+                                        </div>
+                                        <div class="flex items-end gap-2.5 w-full sm:w-auto flex-shrink-0">
+                                            <div class="flex flex-col gap-1 flex-1 sm:w-32">
+                                                <label class="text-[9px] font-black text-slate-400">실제 단가(원)</label>
+                                                <input type="number" value="${item.actualPrice}" oninput="window.updateReceivingItemPrice(${item.bookId}, this.value)" class="w-full px-3 py-2 bg-white border border-emerald-200 rounded-xl text-xs font-black font-mono outline-none focus:ring-2 focus:ring-emerald-400">
+                                            </div>
+                                            <button onclick="window.removeReceivingItem(${item.bookId})" title="항목 제외" class="p-2.5 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-500 hover:text-white transition-colors">
+                                                <i data-lucide="trash-2" size="16"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+
+                        <!-- 추가/대체 도서 검색 영역 (포커스 유지 부분 렌더링) -->
+                        <div class="bg-white rounded-[2.5rem] border border-emerald-100 shadow-sm p-6">
+                            <div class="flex flex-wrap justify-between items-center gap-2 mb-4">
+                                <h3 class="font-black text-lg text-emerald-950 flex items-center gap-2">
+                                    <i data-lucide="search" class="text-emerald-500" size="20"></i> 추가/대체 도서 검색
+                                </h3>
+                                <button onclick="window.setActiveTab('book_mgmt')" class="flex items-center gap-1.5 px-4 py-2 bg-emerald-50 text-emerald-600 rounded-xl text-xs font-black hover:bg-emerald-500 hover:text-white transition-colors shadow-sm">
+                                    <i data-lucide="book-plus" size="14"></i> 신규 도서 등록
+                                </button>
+                            </div>
+                            <div class="relative mb-4">
+                                <i data-lucide="search" class="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-400" size="18"></i>
+                                <input type="text" id="receiving-search-input" placeholder="도서명 또는 출판사로 검색하여 내역에 추가하세요..." class="w-full pl-12 pr-4 py-3 bg-emerald-50/30 border border-emerald-100 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-emerald-400 font-bold" value="${window.escapeHtml(receivingSearch)}" oninput="window.handleReceivingSearch(this.value)">
+                            </div>
+                            <div id="receiving-search-results-area" class="overflow-y-auto max-h-[260px] border border-slate-100 rounded-2xl divide-y divide-slate-100 bg-slate-50/50">
+                                ${window.getReceivingSearchResultsHtml()}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            lucide.createIcons();
+        };
+
+        window.getReceivingSummaryHtml = function() {
+            if (receivingItems.length === 0) {
+                return '<p class="text-emerald-100/70 text-center py-5 font-bold italic">처리할 내역이 없습니다</p>';
+            }
+            return receivingItems.map(item => `
+                <div class="flex justify-between items-center bg-white/20 p-3 rounded-xl border border-white/15">
+                    <span class="flex-1 pr-3 truncate font-bold">${window.escapeHtml(item.title)}</span>
+                    <span class="font-black font-mono whitespace-nowrap">${(Number(item.actualPrice) || 0).toLocaleString()}원</span>
+                </div>
+            `).join('');
+        };
+
+        window.getReceivingSearchResults = function() {
+            const lower = receivingSearch.toLowerCase().trim();
+            if (!lower) {
+                return booksList.filter(b => !receivingItems.some(i => i.bookId == b.id)).slice(0, 15);
+            }
+            return booksList.filter(b =>
+                (b.title.toLowerCase().includes(lower) || (b.author && b.author.toLowerCase().includes(lower))) &&
+                !receivingItems.some(i => i.bookId == b.id)
+            ).slice(0, 25);
+        };
+
+        window.getReceivingSearchResultsHtml = function() {
+            const results = window.getReceivingSearchResults();
+            if (results.length === 0) {
+                return '<div class="p-6 text-center text-xs text-slate-400 font-bold">검색 결과가 없습니다.</div>';
+            }
+            return results.map(book => `
+                <div class="p-4 flex items-center justify-between hover:bg-white transition-colors text-sm">
+                    <div class="flex-1 pr-4 min-w-0">
+                        <h4 class="font-bold text-slate-800 text-xs truncate">${window.escapeHtml(book.title)}</h4>
+                        <span class="text-[10px] text-slate-500 font-mono mt-0.5 block">${(book.price || 0).toLocaleString()}원 · ${window.escapeHtml(book.author || '출판사 미상')}</span>
+                    </div>
+                    <button onclick="window.addReceivingItem(${book.id})" class="flex items-center gap-1 px-3 py-1.5 bg-emerald-50 border border-emerald-100 text-emerald-600 rounded-lg text-[10px] font-black hover:bg-emerald-500 hover:text-white transition-colors flex-shrink-0">
+                        <i data-lucide="plus" size="12"></i> 추가
+                    </button>
+                </div>
+            `).join('');
+        };
+
+        window.updateReceivingSearchResults = function() {
+            const area = document.getElementById('receiving-search-results-area');
+            if (area) {
+                area.innerHTML = window.getReceivingSearchResultsHtml();
+                lucide.createIcons();
+            }
+        };
+
+        window.loadReceivingItems = function(uName, rIdx) {
+            if (!uName) {
+                receivingItems = [];
+                return;
+            }
+            receivingItems = booksList
+                .filter(b => (b.applicants || []).some(a =>
+                    (typeof a === 'object' && a.name === uName && a.round === rIdx + 1) ||
+                    (typeof a !== 'object' && a === uName && rIdx === 0)
+                ))
+                .map(b => {
+                    const app = (b.applicants || []).find(a =>
+                        (typeof a === 'object' && a.name === uName && a.round === rIdx + 1) ||
+                        (typeof a !== 'object' && a === uName && rIdx === 0)
+                    );
+                    return {
+                        bookId: b.id,
+                        title: b.title,
+                        category: b.category,
+                        author: b.author,
+                        originalPrice: Number(b.price) || 0,
+                        actualPrice: (typeof app === 'object' && app.actualPrice !== undefined) ? Number(app.actualPrice) : (Number(b.price) || 0)
+                    };
+                });
+        };
+
+        window.handleReceivingUserChange = function(name) {
+            receivingUser = name;
+            window.loadReceivingItems(name, receivingRound);
+            window.updateTabContent();
+        };
+
+        window.handleReceivingRoundChange = function(r) {
+            receivingRound = r;
+            window.loadReceivingItems(receivingUser, r);
+            window.updateTabContent();
+        };
+
+        window.updateReceivingItemPrice = function(bookId, val) {
+            const num = Number(val) || 0;
+            receivingItems = receivingItems.map(item => item.bookId == bookId ? { ...item, actualPrice: num } : item);
+            const totalCalc = receivingItems.reduce((sum, item) => sum + (Number(item.actualPrice) || 0), 0);
+            const totalEl = document.getElementById('receiving-total-display');
+            const sumListEl = document.getElementById('receiving-summary-list');
+            if (totalEl) totalEl.textContent = `${totalCalc.toLocaleString()}원`;
+            if (sumListEl) sumListEl.innerHTML = window.getReceivingSummaryHtml();
+        };
+
+        window.removeReceivingItem = function(bookId) {
+            receivingItems = receivingItems.filter(i => i.bookId != bookId);
+            window.updateTabContent();
+        };
+
+        window.handleReceivingSearch = function(val) {
+            receivingSearch = val;
+            window.updateReceivingSearchResults();
+        };
+
+        window.addReceivingItem = function(bookId) {
+            if (!receivingUser) {
+                window.showMessage("대상자를 먼저 선택하세요.", "error");
+                return;
+            }
+            const b = booksList.find(x => x.id == bookId);
+            if (b && !receivingItems.some(i => i.bookId == b.id)) {
+                receivingItems.push({
+                    bookId: b.id,
+                    title: b.title,
+                    category: b.category,
+                    author: b.author,
+                    originalPrice: Number(b.price) || 0,
+                    actualPrice: Number(b.price) || 0
+                });
+                window.updateTabContent();
+            }
+        };
+
+        window.handleConfirmReceiving = function() {
+            if (!receivingUser) return;
+            const roundTotal = receivingItems.reduce((sum, item) => sum + (Number(item.actualPrice) || 0), 0);
+
+            usersList = usersList.map(u => {
+                if (u.name === receivingUser) {
+                    const newSpent = [...(u.spent || [0, 0, 0, 0])];
+                    newSpent[receivingRound] = roundTotal;
+                    const newStatus = [...(u.receivedStatus || [false, false, false, false])];
+                    newStatus[receivingRound] = receivingItems.length > 0;
+                    return { ...u, spent: newSpent, receivedStatus: newStatus };
+                }
+                return u;
+            });
+
+            booksList = booksList.map(b => {
+                const newApps = (b.applicants || []).filter(a => {
+                    if (typeof a === 'object') return !(a.name === receivingUser && a.round === receivingRound + 1);
+                    return !(a === receivingUser && receivingRound === 0);
+                });
+
+                const recItem = receivingItems.find(i => i.bookId == b.id);
+                if (recItem) {
+                    const updatedPrice = Number(recItem.actualPrice) || 0;
+                    newApps.push({
+                        name: receivingUser,
+                        round: receivingRound + 1,
+                        actualPrice: updatedPrice
+                    });
+                    // 실제 단가를 도서 관리 기준 단가(price)에도 자동 반영
+                    return { ...b, price: updatedPrice, applicants: newApps };
+                }
+                return { ...b, applicants: newApps };
+            });
+
+            window.loadReceivingItems(receivingUser, receivingRound);
+            window.triggerAutoSave();
+            window.updateTabContent();
+            window.showMessage("구입 확정 및 도서 기준 단가 연동이 완료되었습니다.");
+        };
+
+        // ==========================================
+        // 11. 탭 4: 대상자 관리
+        // ==========================================
+        window.renderUserMgmt = function(container, users) {
+            container.innerHTML = `
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 text-sm">
+                    <div class="lg:col-span-1 space-y-6">
+                        <div class="bg-white p-6 md:p-8 rounded-[2.5rem] border border-emerald-100 shadow-sm">
+                            <h3 class="font-black mb-4 text-emerald-950 text-lg flex items-center gap-2">
+                                <i data-lucide="coins" size="20" class="text-emerald-500"></i> 예산 일괄 수정
+                            </h3>
+                            <div class="space-y-3">
+                                <p class="text-[11px] text-slate-400 font-medium ml-1">모든 이용자의 지원금을 동일하게 변경합니다.</p>
+                                <div class="flex gap-2">
+                                    <input type="number" id="batch-budget-input" placeholder="금액 입력" class="flex-1 min-w-0 px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl font-black font-mono outline-none focus:ring-2 focus:ring-emerald-400">
+                                    <button onclick="window.handleBatchBudgetUpdate()" class="px-5 py-3 bg-emerald-500 text-white rounded-xl font-black shadow-md hover:bg-emerald-600 transition-colors flex-shrink-0">변경</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-white p-6 md:p-8 rounded-[2.5rem] border border-emerald-100 shadow-sm sticky top-8">
+                            <h3 class="font-black mb-6 text-emerald-950 text-lg">${editingUserId ? '대상자 정보 수정' : '대상자 추가'}</h3>
+                            <div class="space-y-4">
+                                <div>
+                                    <label class="text-[10px] font-black uppercase text-slate-400 ml-1">가정명</label>
+                                    <input type="text" id="u-family-input" placeholder="가정명" class="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl font-bold outline-none focus:ring-2 focus:ring-emerald-400" value="${window.escapeHtml(tempUserData.family)}">
+                                </div>
+                                <div>
+                                    <label class="text-[10px] font-black uppercase text-slate-400 ml-1">성명</label>
+                                    <input type="text" id="u-name-input" placeholder="성명" class="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl font-bold outline-none focus:ring-2 focus:ring-emerald-400" value="${window.escapeHtml(tempUserData.name)}">
+                                </div>
+                                <div>
+                                    <label class="text-[10px] font-black uppercase text-slate-400 ml-1">지원 예산</label>
+                                    <input type="number" id="u-budget-input" placeholder="150000" class="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl font-black font-mono outline-none focus:ring-2 focus:ring-emerald-400" value="${tempUserData.budget}">
+                                </div>
+                                <div>
+                                    <label class="text-[10px] font-black text-emerald-800/40 uppercase tracking-widest mb-2 flex justify-between ml-1">관심분야 <span>최대 3개</span></label>
+                                    <div class="grid grid-cols-2 gap-2">
+                                        ${CATEGORIES.map(cat => `<button type="button" onclick="window.toggleUserInterest('${cat}')" class="py-2.5 px-2 text-[11px] rounded-xl font-black border transition-all ${tempUserData.interests.includes(cat) ? 'bg-emerald-500 border-emerald-500 text-white shadow-sm' : 'bg-white border-emerald-100 text-emerald-400 hover:bg-emerald-50'}">${cat}</button>`).join('')}
+                                    </div>
+                                </div>
+                                <div class="pt-4 flex flex-col gap-2">
+                                    <button onclick="window.handleAddUserManual()" class="w-full py-4 bg-emerald-600 text-white rounded-2xl font-black shadow-lg hover:bg-emerald-700 transition-all">${editingUserId ? '수정 완료' : '저장 하기'}</button>
+                                    ${editingUserId ? `<button onclick="window.cancelUserEdit()" class="w-full py-2 text-slate-400 font-bold text-xs underline">취소</button>` : ''}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="lg:col-span-2 bg-white border border-emerald-50 rounded-[2rem] shadow-sm overflow-hidden overflow-x-auto h-fit">
+                        <table class="w-full text-left text-sm min-w-[520px]">
+                            <thead class="bg-emerald-50/30 text-emerald-800 text-[10px] font-black uppercase tracking-widest text-center">
+                                <tr>
+                                    <th class="px-4 py-5 text-left">가정</th>
+                                    <th class="px-4 py-5 text-left">성명</th>
+                                    <th class="px-4 py-5 text-right">예산</th>
+                                    <th class="px-4 py-5 text-left">관심분야</th>
+                                    <th class="px-4 py-5 text-center">작업</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-emerald-50">
+                                ${users.map(u => `
+                                    <tr class="hover:bg-emerald-50/10">
+                                        <td class="px-4 py-4 font-bold text-emerald-600">${window.escapeHtml(u.family)}</td>
+                                        <td class="px-4 py-4 font-bold text-slate-900">${window.escapeHtml(u.name)}</td>
+                                        <td class="px-4 py-4 text-right font-mono">${(u.budget || 0).toLocaleString()}원</td>
+                                        <td class="px-4 py-4 text-left">
+                                            <div class="flex gap-1 flex-wrap">
+                                                ${(u.interests || []).map(it => `<span class="text-[9px] px-1.5 py-0.5 rounded-full font-bold border ${window.getCategoryColor(it)}">${window.escapeHtml(it)}</span>`).join('')}
+                                            </div>
+                                        </td>
+                                        <td class="px-4 py-4 text-center">
+                                            <div class="flex justify-center gap-2">
+                                                <button onclick="window.startEditUser(${u.id})" class="p-2 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white transition-colors"><i data-lucide="edit-2" size="14"></i></button>
+                                                <button onclick="window.handleDeleteUser(${u.id})" class="p-2 rounded-lg bg-rose-50 text-rose-500 hover:bg-rose-500 hover:text-white transition-colors"><i data-lucide="trash-2" size="14"></i></button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+            lucide.createIcons();
+        };
+
+        // ==========================================
+        // 12. 탭 5: 도서 관리
+        // ==========================================
+        window.renderBookMgmt = function(container) {
+            const sortedBooks = [...booksList].sort((a, b) => {
+                if (bookSortCriteria === 'date') return (b.date || '').localeCompare(a.date || '');
+                if (bookSortCriteria === 'title') return (a.title || '').localeCompare(b.title || '');
+                if (bookSortCriteria === 'price') return (b.price || 0) - (a.price || 0);
+                return 0;
+            });
+
+            container.innerHTML = `
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 text-sm">
+                    <div class="lg:col-span-1">
+                        <div class="bg-white p-6 md:p-8 rounded-[2.5rem] border border-emerald-100 shadow-sm sticky top-8">
+                            <h3 class="font-black mb-6 text-lg text-emerald-950">${editingBookId ? '도서 정보 수정' : '신규 도서 등록'}</h3>
+                            <div class="space-y-4">
+                                <div>
+                                    <label class="text-[10px] font-black uppercase text-slate-400">카테고리</label>
+                                    <select id="bk-cat" class="w-full p-3 bg-emerald-50/50 border border-emerald-100 rounded-xl font-bold outline-none">${CATEGORIES.map(c => `<option value="${c}" ${tempBookData.category === c ? 'selected' : ''}>${c}</option>`).join('')}</select>
+                                </div>
+                                <div>
+                                    <label class="text-[10px] font-black uppercase text-slate-400">도서명</label>
+                                    <input type="text" id="bk-title-input" placeholder="도서명" class="w-full p-3 bg-emerald-50/50 border border-emerald-100 rounded-xl font-bold outline-none focus:ring-2 focus:ring-emerald-400" value="${window.escapeHtml(tempBookData.title)}">
+                                </div>
+                                <div>
+                                    <label class="text-[10px] font-black uppercase text-slate-400">단가</label>
+                                    <input type="number" id="bk-price-input" placeholder="0" class="w-full p-3 bg-emerald-50/50 border border-emerald-100 rounded-xl font-black font-mono outline-none focus:ring-2 focus:ring-emerald-400" value="${tempBookData.price}">
+                                </div>
+                                <div>
+                                    <label class="text-[10px] font-black uppercase text-slate-400">출판일</label>
+                                    <input type="date" id="bk-date-input" class="w-full p-3 bg-emerald-50/50 border border-emerald-100 rounded-xl font-bold outline-none focus:ring-2 focus:ring-emerald-400" value="${window.escapeHtml(tempBookData.date)}">
+                                </div>
+                                <div>
+                                    <label class="text-[10px] font-black uppercase text-slate-400">출판사</label>
+                                    <input type="text" id="bk-author-input" placeholder="출판사" class="w-full p-3 bg-emerald-50/50 border border-emerald-100 rounded-xl font-bold outline-none focus:ring-2 focus:ring-emerald-400" value="${window.escapeHtml(tempBookData.author)}">
+                                </div>
+                                <div class="pt-2 flex flex-col gap-2">
+                                    <button onclick="window.handleAddBookManual()" class="w-full py-4 bg-emerald-600 text-white rounded-2xl font-black shadow-lg hover:bg-emerald-700 active:scale-95 transition-all">${editingBookId ? '수정 완료' : '저장하기'}</button>
+                                    ${editingBookId ? `<button onclick="window.cancelBookEdit()" class="w-full py-2 text-slate-400 font-bold text-xs underline">취소</button>` : ''}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="lg:col-span-2 space-y-4">
+                        <div class="flex justify-end items-center gap-2 px-2">
+                            <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">정렬 기준</span>
+                            <select onchange="bookSortCriteria = this.value; window.updateTabContent();" class="bg-white border border-emerald-100 rounded-xl px-3 py-1.5 text-xs font-bold outline-none">
+                                <option value="date" ${bookSortCriteria === 'date' ? 'selected' : ''}>출판일순</option>
+                                <option value="title" ${bookSortCriteria === 'title' ? 'selected' : ''}>도서명순</option>
+                                <option value="price" ${bookSortCriteria === 'price' ? 'selected' : ''}>가격순</option>
+                            </select>
+                        </div>
+                        <div class="bg-white border border-emerald-50 rounded-[2rem] shadow-sm overflow-hidden overflow-x-auto h-fit">
+                            <table class="w-full text-left text-sm min-w-[460px]">
+                                <thead class="bg-emerald-50/30 text-emerald-800 text-[10px] font-black uppercase tracking-widest text-center">
+                                    <tr>
+                                        <th class="px-4 py-5 text-left">정보</th>
+                                        <th class="px-4 py-5 text-right">단가</th>
+                                        <th class="px-4 py-5 text-center">작업</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-emerald-50">
+                                    ${sortedBooks.map(b => `
+                                        <tr class="hover:bg-emerald-50/10">
+                                            <td class="px-4 py-4 font-bold text-slate-900">
+                                                ${window.escapeHtml(b.title)}
+                                                <p class="text-[10px] text-slate-400 font-normal mt-0.5">${window.escapeHtml(b.author || '미상')} | ${window.escapeHtml(b.category)} | ${window.escapeHtml(b.date || '미상')}</p>
+                                            </td>
+                                            <td class="px-4 py-4 text-right font-black text-emerald-600 font-mono whitespace-nowrap">${(b.price || 0).toLocaleString()}원</td>
+                                            <td class="px-4 py-4 text-center">
+                                                <div class="flex justify-center gap-2">
+                                                    <button onclick="window.startEditBook(${b.id})" class="p-2 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white transition-colors"><i data-lucide="edit-2" size="14"></i></button>
+                                                    <button onclick="window.handleDeleteBook(${b.id})" class="p-2 rounded-lg bg-rose-50 text-rose-500 hover:bg-rose-500 hover:text-white transition-colors"><i data-lucide="trash-2" size="14"></i></button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            `;
+            lucide.createIcons();
+        };
+
+        // ==========================================
+        // 13. 데이터 조작 핸들러 (모든 변경 시 구글 시트 자동 저장 연동)
+        // ==========================================
+        window.handlePurchaseUserSelect = function(name) {
+            purchaseUser = name;
+            window.updateTabContent();
+        };
+
+        window.handleRoundSelect = function(r) {
+            purchaseRound = r;
+            window.updateTabContent();
+        };
+
+        window.handleAddToCart = function(id) {
+            if (!purchaseUser) {
+                window.showMessage("대상자를 먼저 선택하세요.", "error");
+                return;
+            }
+            const idx = cart.findIndex(i => i.book.id == id && i.userName === purchaseUser);
+            if (idx > -1) {
+                cart.splice(idx, 1);
+            } else {
+                const book = booksList.find(b => b.id == id);
+                if (!book) return;
+                const safeApplicants = book.applicants || [];
+                if (safeApplicants.some(a => (typeof a === 'object' ? a.name : a) === purchaseUser)) {
+                    window.showMessage("이미 구입한 도서입니다.", "error");
+                    return;
+                }
+                cart.push({ userName: purchaseUser, round: purchaseRound, book: book });
+            }
+            window.updatePurchaseSidebar(window.getProcessedUsers());
+            window.updatePurchaseBookList();
+        };
+
+        window.handleRemoveFromCart = function(userId, bookId) {
+            const uObj = usersList.find(u => u.id == userId);
+            const uName = uObj ? uObj.name : '';
+            cart = cart.filter(i => !(i.book.id == bookId && i.userName === uName));
+            window.updatePurchaseSidebar(window.getProcessedUsers());
+            window.updatePurchaseBookList();
+        };
+
+        window.handleCompletePurchaseAction = function() {
+            if (cart.length === 0) return;
+
+            usersList = usersList.map(u => {
+                const userCartItems = cart.filter(item => item.userName === u.name);
+                if (userCartItems.length > 0) {
+                    const ns = [...(u.spent || [0, 0, 0, 0])];
+                    userCartItems.forEach(item => {
+                        ns[item.round] = (ns[item.round] || 0) + (Number(item.book.price) || 0);
+                    });
+                    return { ...u, spent: ns };
+                }
+                return u;
+            });
+
+            booksList = booksList.map(b => {
+                const bookCartItems = cart.filter(item => item.book.id == b.id);
+                if (bookCartItems.length > 0) {
+                    const newApplicants = [...(b.applicants || [])];
+                    bookCartItems.forEach(item => {
+                        if (!newApplicants.some(a => (typeof a === 'object' ? a.name : a) === item.userName)) {
+                            newApplicants.push({ name: item.userName, round: item.round + 1, actualPrice: Number(b.price) || 0 });
+                        }
+                    });
+                    return { ...b, applicants: newApplicants };
+                }
+                return b;
+            });
+
+            cart = [];
+            window.triggerAutoSave();
+            window.updateTabContent();
+            window.showMessage("일괄 구입 신청이 완료되어 구글 시트에 자동 저장됩니다.");
+        };
+
+        window.handleBatchBudgetUpdate = function() {
+            const val = document.getElementById('batch-budget-input').value;
+            if (!val || isNaN(val)) {
+                window.showMessage("올바른 금액을 입력하세요.", "error");
+                return;
+            }
+            window.showConfirmModal(`모든 이용자의 예산을 ${Number(val).toLocaleString()}원으로 일괄 수정하시겠습니까?`, () => {
+                usersList = usersList.map(u => ({ ...u, budget: Number(val) }));
+                window.triggerAutoSave();
+                window.updateTabContent();
+                window.showMessage("예산 일괄 수정 완료");
+            }, "예산 일괄 수정");
+        };
+
+        window.toggleUserInterest = function(cat) {
+            // 입력 중인 값 보존
+            const fEl = document.getElementById('u-family-input');
+            const nEl = document.getElementById('u-name-input');
+            const bEl = document.getElementById('u-budget-input');
+            if (fEl) tempUserData.family = fEl.value;
+            if (nEl) tempUserData.name = nEl.value;
+            if (bEl) tempUserData.budget = bEl.value;
+
+            const idx = tempUserData.interests.indexOf(cat);
+            if (idx > -1) tempUserData.interests.splice(idx, 1);
+            else if (tempUserData.interests.length < 3) tempUserData.interests.push(cat);
+            else window.showMessage("관심분야는 최대 3개까지 선택 가능합니다.", "error");
+
+            window.renderUserMgmt(document.getElementById('content-area'), window.getProcessedUsers());
+        };
+
+        window.handleAddUserManual = function() {
+            const f = document.getElementById('u-family-input').value.trim();
+            const n = document.getElementById('u-name-input').value.trim();
+            const b = document.getElementById('u-budget-input').value;
+            if (!n) {
+                window.showMessage("성명을 입력해주세요.", "error");
+                return;
+            }
+            if (editingUserId) {
+                usersList = usersList.map(u => u.id == editingUserId ? { ...u, family: f, name: n, budget: Number(b) || 150000, interests: [...tempUserData.interests] } : u);
+                editingUserId = null;
+            } else {
+                usersList.push({
+                    id: Date.now(),
+                    family: f,
+                    name: n,
+                    budget: Number(b) || 150000,
+                    spent: [0, 0, 0, 0],
+                    receivedStatus: [false, false, false, false],
+                    interests: [...tempUserData.interests]
+                });
+            }
+            tempUserData = { family: '', name: '', budget: 150000, interests: [] };
+            window.triggerAutoSave();
+            window.updateTabContent();
+            window.showMessage("이용자 정보가 저장되었습니다.");
+        };
+
+        window.startEditUser = function(id) {
+            const u = usersList.find(x => x.id == id);
+            if (!u) return;
+            editingUserId = id;
+            tempUserData = { family: u.family || '', name: u.name, budget: u.budget, interests: [...(u.interests || [])] };
+            window.updateTabContent();
+        };
+
+        window.cancelUserEdit = function() {
+            editingUserId = null;
+            tempUserData = { family: '', name: '', budget: 150000, interests: [] };
+            window.updateTabContent();
+        };
+
+        window.handleDeleteUser = function(id) {
+            const u = usersList.find(x => x.id == id);
+            if (!u) return;
+            window.showConfirmModal(`'${u.name}' 대상자를 삭제하시겠습니까?`, () => {
+                usersList = usersList.filter(x => x.id != id);
+                window.triggerAutoSave();
+                window.updateTabContent();
+                window.showMessage("대상자가 삭제되었습니다.");
+            }, "대상자 삭제");
+        };
+
+        window.handleAddBookManual = function() {
+            const c = document.getElementById('bk-cat').value;
+            const t = document.getElementById('bk-title-input').value.trim();
+            const p = document.getElementById('bk-price-input').value;
+            const d = document.getElementById('bk-date-input').value || new Date().toISOString().slice(0, 10);
+            const a = document.getElementById('bk-author-input').value.trim();
+            if (!t) {
+                window.showMessage("도서명을 입력해주세요.", "error");
+                return;
+            }
+            if (editingBookId) {
+                booksList = booksList.map(b => b.id == editingBookId ? { ...b, title: t, price: Number(p) || 0, author: a, date: d, category: c } : b);
+                editingBookId = null;
+            } else {
+                booksList.unshift({ id: Date.now(), title: t, price: Number(p) || 0, author: a, date: d, category: c, applicants: [] });
+            }
+            tempBookData = { title: '', price: '', author: '', date: '', category: '색칠북' };
+            window.triggerAutoSave();
+            window.updateTabContent();
+            window.showMessage("도서 정보가 저장되었습니다.");
+        };
+
+        window.startEditBook = function(id) {
+            const b = booksList.find(x => x.id == id);
+            if (!b) return;
+            editingBookId = id;
+            tempBookData = { title: b.title, price: b.price, author: b.author || '', date: b.date || '', category: b.category };
+            window.updateTabContent();
+        };
+
+        window.cancelBookEdit = function() {
+            editingBookId = null;
+            tempBookData = { title: '', price: '', author: '', date: '', category: '색칠북' };
+            window.updateTabContent();
+        };
+
+        window.handleDeleteBook = function(id) {
+            const b = booksList.find(x => x.id == id);
+            if (!b) return;
+            window.showConfirmModal(`'${b.title}' 도서를 삭제하시겠습니까?`, () => {
+                booksList = booksList.filter(x => x.id != id);
+                window.triggerAutoSave();
+                window.updateTabContent();
+                window.showMessage("도서가 삭제되었습니다.");
+            }, "도서 삭제");
+        };
+
+        window.handleImportBackup = function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const r = new FileReader();
+            r.onload = (evt) => {
+                try {
+                    const d = JSON.parse(evt.target.result);
+                    if (!Array.isArray(d.users) || !Array.isArray(d.books)) throw new Error();
+                    usersList = window.normalizeUsers(d.users);
+                    booksList = window.normalizeBooks(d.books);
+                    window.triggerAutoSave();
+                    window.updateTabContent();
+                    window.showMessage("백업 복구 완료 및 구글 시트 자동 저장됨");
+                } catch (err) {
+                    window.showMessage("올바른 JSON 백업 파일이 아닙니다.", "error");
+                }
+            };
+            r.readAsText(file);
+            e.target.value = null;
+        };
+
+        window.handleResetPurchaseData = function() {
+            window.showConfirmModal("구입 및 확정 내역만 모두 초기화하시겠습니까?\n(대상자 명단과 도서 목록은 그대로 유지됩니다.)", () => {
+                usersList = usersList.map(u => ({ ...u, spent: [0, 0, 0, 0], receivedStatus: [false, false, false, false] }));
+                booksList = booksList.map(b => ({ ...b, applicants: [] }));
+                cart = [];
+                receivingItems = [];
+                window.triggerAutoSave();
+                window.updateTabContent();
+                window.showMessage("구입 기록이 초기화되었습니다.");
+            }, "구입 기록 초기화");
+        };
+
+        // ==========================================
+        // 14. 엑셀 업로드 & 다운로드 기능
+        // ==========================================
+        window.handleBookExcelDownload = function() {
+            if (booksList.length === 0) { window.showMessage("다운로드할 도서가 없습니다.", "error"); return; }
+            const data = booksList.map(b => ({
+                "도서명": b.title,
+                "가격": b.price,
+                "출판일": b.date || "",
+                "출판사": b.author || "",
+                "카테고리": b.category
+            }));
+            const ws = XLSX.utils.json_to_sheet(data);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "도서목록");
+            XLSX.writeFile(wb, `문화누리카드_도서목록_${new Date().toISOString().slice(0, 10)}.xlsx`);
+            window.showMessage("도서 목록 엑셀 다운로드 완료");
+        };
+
+        window.handleFileUpload = function(e) {
+            const f = e.target.files[0];
+            if (!f) return;
+
+            const r = new FileReader();
+            r.onload = (evt) => {
+                try {
+                    const wb = XLSX.read(evt.target.result, { type: 'binary' });
+                    const ws = wb.Sheets[wb.SheetNames[0]];
+                    const data = XLSX.utils.sheet_to_json(ws, { header: 1 });
+                    const rows = data.slice(1);
+
+                    const excelBooks = [];
+                    rows.forEach((row) => {
+                        const t = String(row[0] || "").trim();
+                        if (!t) return;
+                        const p = Number(row[1] || 0);
+                        let d = row[2];
+                        if (typeof d === 'number') d = window.excelDateToJSDate(d);
+                        else d = String(d || "").trim();
+                        const a = String(row[3] || "").trim();
+                        const c = CATEGORIES.includes(row[4]) ? row[4] : '교재';
+                        excelBooks.push({ title: t, price: p, author: a, date: d, category: c });
+                    });
+
+                    if (excelBooks.length > 0) {
+                        let updatedCount = 0;
+                        let addedCount = 0;
+
+                        const excelMap = new Map();
+                        excelBooks.forEach(eb => {
+                            if (!excelMap.has(eb.title) || (eb.date || "") > (excelMap.get(eb.title).date || "")) {
+                                excelMap.set(eb.title, eb);
+                            }
+                        });
+
+                        const existingMap = new Map();
+                        booksList.forEach(b => {
+                            if (!existingMap.has(b.title)) {
+                                existingMap.set(b.title, b);
+                            } else {
+                                const curr = existingMap.get(b.title);
+                                if ((b.date || "") > (curr.date || "")) {
+                                    existingMap.set(b.title, {
+                                        ...curr,
+                                        price: b.price, author: b.author, date: b.date, category: b.category,
+                                        applicants: [...(curr.applicants || []), ...(b.applicants || [])]
+                                    });
+                                }
+                            }
+                        });
+
+                        let seq = 1;
+                        excelMap.forEach((excelBook, title) => {
+                            if (existingMap.has(title)) {
+                                const curr = existingMap.get(title);
+                                if ((excelBook.date || "") >= (curr.date || "")) {
+                                    existingMap.set(title, {
+                                        ...curr,
+                                        price: excelBook.price,
+                                        author: excelBook.author,
+                                        date: excelBook.date,
+                                        category: excelBook.category
+                                    });
+                                    updatedCount++;
+                                }
+                            } else {
+                                existingMap.set(title, {
+                                    id: Date.now() + (seq++),
+                                    title: excelBook.title,
+                                    price: excelBook.price,
+                                    author: excelBook.author,
+                                    date: excelBook.date,
+                                    category: excelBook.category,
+                                    applicants: []
+                                });
+                                addedCount++;
+                            }
+                        });
+
+                        booksList = Array.from(existingMap.values());
+                        booksList.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+
+                        window.triggerAutoSave();
+                        window.updateTabContent();
+                        window.showMessage(`총 ${addedCount}권 추가, ${updatedCount}권 업데이트 후 시트 자동 저장됨`);
+                    } else {
+                        window.showMessage("업로드할 유효한 도서 데이터가 없습니다.", "error");
+                    }
+                } catch (error) {
+                    window.showMessage("엑셀 파일을 읽는 중 오류가 발생했습니다.", "error");
+                }
+            };
+            r.readAsBinaryString(f);
+            e.target.value = null;
+        };
+
+        window.handleExportUserStatusExcel = function() {
+            const users = window.getProcessedUsers();
+            if (users.length === 0) { window.showMessage("다운로드할 데이터가 없습니다.", "error"); return; }
+
+            const data = users.map(u => ({
+                "가정": u.family || '',
+                "성명": u.name,
+                "지원금": u.budget || 0,
+                "1차 지출": u.spent ? (u.spent[0] || 0) : 0,
+                "2차 지출": u.spent ? (u.spent[1] || 0) : 0,
+                "3차 지출": u.spent ? (u.spent[2] || 0) : 0,
+                "4차 지출": u.spent ? (u.spent[3] || 0) : 0,
+                "총 지출액": u.totalSpent || 0,
+                "잔액": u.balance || 0,
+                "관심분야": (u.interests || []).join(', ')
+            }));
+
+            const ws = XLSX.utils.json_to_sheet(data);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "집행현황");
+            XLSX.writeFile(wb, `문화누리카드_집행현황_${new Date().toISOString().slice(0, 10)}.xlsx`);
+            window.showMessage("집행 현황 엑셀 다운로드 완료");
+        };
+
+        window.handleExportPurchaseListExcel = function() {
+            const currentRound = activeTab === 'receiving' ? receivingRound : purchaseRound;
+            const targetRounds = (activeTab === 'purchase' || activeTab === 'receiving') ? [currentRound + 1] : [1, 2, 3, 4];
+            let exportData = [];
+
+            targetRounds.forEach(r => {
+                const families = [...new Set(usersList.map(u => u.family))].sort((a, b) => (a || '').localeCompare(b || ''));
+                families.forEach(f => {
+                    const familyUsers = usersList.filter(u => u.family === f).sort((a, b) => a.name.localeCompare(b.name));
+                    familyUsers.forEach(u => {
+                        const boughtInRound = booksList.filter(b =>
+                            (b.applicants || []).some(app => {
+                                if (typeof app === 'object') return app.name === u.name && app.round === r;
+                                return app === u.name && r === 1;
+                            })
+                        );
+
+                        boughtInRound.forEach(b => {
+                            const app = (b.applicants || []).find(a => (typeof a === 'object' ? a.name === u.name && a.round === r : a === u.name && r === 1));
+                            const prc = (typeof app === 'object' && app.actualPrice !== undefined) ? Number(app.actualPrice) : (Number(b.price) || 0);
+                            exportData.push({
+                                "차수": `${r}차`,
+                                "가정": f || '미지정',
+                                "성명": u.name,
+                                "도서명": b.title,
+                                "카테고리": b.category,
+                                "출판사": b.author || '미상',
+                                "단가": prc,
+                                "출판일": b.date || ''
+                            });
+                        });
+                    });
+                });
+            });
+
+            if (exportData.length === 0) {
+                window.showMessage("다운로드할 구입 내역이 없습니다.", "error");
+                return;
+            }
+
+            const ws = XLSX.utils.json_to_sheet(exportData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "구입목록");
+            const fileName = (activeTab === 'purchase' || activeTab === 'receiving')
+                ? `문화누리카드_${currentRound + 1}차_도서구입목록_${new Date().toISOString().slice(0, 10)}.xlsx`
+                : `문화누리카드_전체_도서구입목록_${new Date().toISOString().slice(0, 10)}.xlsx`;
+            XLSX.writeFile(wb, fileName);
+            window.showMessage("구입 목록 엑셀 다운로드 완료");
+        };
+
+        // ==========================================
+        // 15. 인쇄 기능 (집행 현황, 최근 차수 신청 목록, 확정 구입 목록)
+        // ==========================================
+        window.handlePrintUserStatus = function() {
+            const printArea = document.getElementById('print-area');
+            const users = window.getProcessedUsers();
+
+            let totalBudget = 0, totalSpent1 = 0, totalSpent2 = 0, totalSpent3 = 0, totalSpent4 = 0, totalSpentAll = 0, totalBalance = 0;
+
+            const rowsHtml = users.map(u => {
+                const b = u.budget || 0;
+                const s1 = u.spent ? (u.spent[0] || 0) : 0;
+                const s2 = u.spent ? (u.spent[1] || 0) : 0;
+                const s3 = u.spent ? (u.spent[2] || 0) : 0;
+                const s4 = u.spent ? (u.spent[3] || 0) : 0;
+                const ts = u.totalSpent || 0;
+                const bal = u.balance || 0;
+
+                totalBudget += b; totalSpent1 += s1; totalSpent2 += s2; totalSpent3 += s3; totalSpent4 += s4; totalSpentAll += ts; totalBalance += bal;
+
+                return `
+                    <tr>
+                        <td style="border: 1px solid black; white-space: nowrap;">${window.escapeHtml(u.family || '')}</td>
+                        <td style="border: 1px solid black; font-weight:bold; white-space: nowrap;">${window.escapeHtml(u.name)}</td>
+                        <td style="border: 1px solid black; text-align:right; white-space: nowrap;">${b.toLocaleString()}</td>
+                        <td style="border: 1px solid black; text-align:right; white-space: nowrap;">${s1.toLocaleString()}</td>
+                        <td style="border: 1px solid black; text-align:right; white-space: nowrap;">${s2.toLocaleString()}</td>
+                        <td style="border: 1px solid black; text-align:right; white-space: nowrap;">${s3.toLocaleString()}</td>
+                        <td style="border: 1px solid black; text-align:right; white-space: nowrap;">${s4.toLocaleString()}</td>
+                        <td style="border: 1px solid black; text-align:right; font-weight:bold; color: #059669; white-space: nowrap;">${ts.toLocaleString()}</td>
+                        <td style="border: 1px solid black; text-align:right; font-weight:bold; color: #ea580c; white-space: nowrap;">${bal.toLocaleString()}</td>
+                    </tr>
+                `;
+            }).join('');
+
+            const totalRow = `
+                <tr style="background-color: #f0f0f0; font-weight: bold;">
+                    <td colspan="2" style="border: 1px solid black; text-align:center; white-space: nowrap;">총계</td>
+                    <td style="border: 1px solid black; text-align:right; white-space: nowrap;">${totalBudget.toLocaleString()}</td>
+                    <td style="border: 1px solid black; text-align:right; white-space: nowrap;">${totalSpent1.toLocaleString()}</td>
+                    <td style="border: 1px solid black; text-align:right; white-space: nowrap;">${totalSpent2.toLocaleString()}</td>
+                    <td style="border: 1px solid black; text-align:right; white-space: nowrap;">${totalSpent3.toLocaleString()}</td>
+                    <td style="border: 1px solid black; text-align:right; white-space: nowrap;">${totalSpent4.toLocaleString()}</td>
+                    <td style="border: 1px solid black; text-align:right; color: #059669; white-space: nowrap;">${totalSpentAll.toLocaleString()}</td>
+                    <td style="border: 1px solid black; text-align:right; color: #ea580c; white-space: nowrap;">${totalBalance.toLocaleString()}</td>
+                </tr>
+            `;
+
+            printArea.innerHTML = `
+                <div class="family-section">
+                    <h1>이용자별 집행 현황 보고서</h1>
+                    <div class="print-header-info" style="justify-content: flex-end;">
+                        <span>총 인원: ${users.length}명</span>
+                    </div>
+                    <table class="text-sm" style="border: 1.5px solid black; border-collapse: collapse; width: 100%;">
+                        <thead>
+                            <tr>
+                                <th style="border: 1px solid black; background-color: #f0f0f0;">가정</th>
+                                <th style="border: 1px solid black; background-color: #f0f0f0;">성명</th>
+                                <th style="border: 1px solid black; background-color: #f0f0f0;">지원금</th>
+                                <th style="border: 1px solid black; background-color: #f0f0f0;">1차</th>
+                                <th style="border: 1px solid black; background-color: #f0f0f0;">2차</th>
+                                <th style="border: 1px solid black; background-color: #f0f0f0;">3차</th>
+                                <th style="border: 1px solid black; background-color: #f0f0f0;">4차</th>
+                                <th style="border: 1px solid black; background-color: #f0f0f0;">총 지출액</th>
+                                <th style="border: 1px solid black; background-color: #f0f0f0;">잔액</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${rowsHtml}
+                            ${totalRow}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            window.print();
+        };
+
+        /**
+         * 스마트 구입 신청: 가장 최근(최고) 차수의 확정 구입 내역을 '제 ( )차 도서 신청 목록' 양식으로 인쇄
+         */
+        window.handlePrintCart = function() {
+            const printArea = document.getElementById('print-area');
+            let maxRound = 0;
+
+            booksList.forEach(book => {
+                (book.applicants || []).forEach(app => {
+                    const r = typeof app === 'object' ? app.round : 1;
+                    if (r > maxRound) maxRound = r;
+                });
+            });
+
+            if (maxRound === 0) {
+                window.showMessage("인쇄할 최근 신청 내역(확정된 내역)이 없습니다.", "error");
+                return;
+            }
+
+            const r = maxRound;
+            let html = '';
+            const families = [...new Set(usersList.map(u => u.family))].sort((a, b) => (a || '').localeCompare(b || ''));
+
+            families.forEach(f => {
+                const familyUsers = usersList.filter(u => u.family === f).sort((a, b) => a.name.localeCompare(b.name));
+                let familyRows = '';
+
+                familyUsers.forEach(u => {
+                    const boughtInRound = booksList.filter(b =>
+                        (b.applicants || []).some(app => {
+                            if (typeof app === 'object') return app.name === u.name && app.round === r;
+                            return app === u.name && r === 1;
+                        })
+                    );
+
+                    if (boughtInRound.length > 0) {
+                        boughtInRound.forEach((b, idx) => {
+                            familyRows += `<tr>
+                                ${idx === 0 ? `<td rowspan="${boughtInRound.length}" style="font-weight:bold; border: 1px solid black;">${window.escapeHtml(u.name)}</td>` : ''}
+                                <td style="text-align:left; padding-left: 10px; border: 1px solid black;">${window.escapeHtml(b.title)}</td>
+                                ${idx === 0 ? `<td rowspan="${boughtInRound.length}" style="border: 1px solid black;"></td>` : ''}
+                            </tr>`;
+                        });
+                    }
+                });
+
+                if (familyRows) {
+                    html += `<div class="family-section">
+                        <h1>제 ${r}차 도서 신청 목록</h1>
+                        <div class="print-header-info">
+                            <span>가정명: ${window.escapeHtml(f || '미지정')}</span>
+                            <span>신청 차수: ${r}차</span>
+                        </div>
+                        <table class="text-sm" style="border: 1.5px solid black; border-collapse: collapse; width: 100%;">
+                            <thead>
+                                <tr>
+                                    <th width="20%" style="border: 1px solid black; background-color: #f0f0f0;">성명</th>
+                                    <th width="65%" style="border: 1px solid black; background-color: #f0f0f0;">신청 도서명</th>
+                                    <th width="15%" style="border: 1px solid black; background-color: #f0f0f0;">서명</th>
+                                </tr>
+                            </thead>
+                            <tbody>${familyRows}</tbody>
+                        </table>
+                    </div>`;
+                }
+            });
+
+            if (!html) {
+                window.showMessage("해당 차수에 인쇄할 내역이 없습니다.", "error");
+                return;
+            }
+
+            printArea.innerHTML = html;
+            window.print();
+        };
+
+        window.handlePrintReport = function() {
+            const printArea = document.getElementById('print-area');
+            let html = '';
+
+            const currentRound = activeTab === 'receiving' ? receivingRound : purchaseRound;
+            const targetRounds = (activeTab === 'purchase' || activeTab === 'receiving') ? [currentRound + 1] : [1, 2, 3, 4];
+
+            targetRounds.forEach(r => {
+                let roundHtml = '';
+                const families = [...new Set(usersList.map(u => u.family))].sort((a, b) => (a || '').localeCompare(b || ''));
+
+                families.forEach(f => {
+                    const familyUsers = usersList.filter(u => u.family === f).sort((a, b) => a.name.localeCompare(b.name));
+                    let familyRows = '';
+
+                    familyUsers.forEach(u => {
+                        const boughtInRound = booksList.filter(b =>
+                            (b.applicants || []).some(app => {
+                                if (typeof app === 'object') return app.name === u.name && app.round === r;
+                                return app === u.name && r === 1;
+                            })
+                        );
+
+                        if (boughtInRound.length > 0) {
+                            boughtInRound.forEach((b, idx) => {
+                                familyRows += `<tr>
+                                    ${idx === 0 ? `<td rowspan="${boughtInRound.length}" style="font-weight:bold; border: 1px solid black;">${window.escapeHtml(u.name)}</td>` : ''}
+                                    <td style="text-align:left; padding-left: 10px; border: 1px solid black;">${window.escapeHtml(b.title)}</td>
+                                    ${idx === 0 ? `<td rowspan="${boughtInRound.length}" style="border: 1px solid black;"></td>` : ''}
+                                </tr>`;
+                            });
+                        }
+                    });
+
+                    if (familyRows) {
+                        roundHtml += `<div class="family-section">
+                            <h1>제 ${r}차 문화누리카드 도서구입목록</h1>
+                            <div class="print-header-info">
+                                <span>가정명: ${window.escapeHtml(f || '미지정')}</span>
+                                <span>집행 차수: ${r}차</span>
+                            </div>
+                            <table class="text-sm" style="border: 1.5px solid black; border-collapse: collapse; width: 100%;">
+                                <thead>
+                                    <tr>
+                                        <th width="20%" style="border: 1px solid black; background-color: #f0f0f0;">성명</th>
+                                        <th width="65%" style="border: 1px solid black; background-color: #f0f0f0;">확정 도서명</th>
+                                        <th width="15%" style="border: 1px solid black; background-color: #f0f0f0;">서명</th>
+                                    </tr>
+                                </thead>
+                                <tbody>${familyRows}</tbody>
+                            </table>
+                        </div>`;
+                    }
+                });
+
+                html += roundHtml;
+            });
+
+            if (!html) {
+                window.showMessage("해당 차수에 인쇄할 확정 내역이 없습니다.", "error");
+                return;
+            }
+
+            printArea.innerHTML = html;
+            window.print();
+        };
+
+        // ==========================================
+        // 16. 이용자 상세 보기 슬라이드 모달
+        // ==========================================
+        window.showUserDetail = function(id) {
+            const u = window.getProcessedUsers().find(x => x.id == id);
+            if (!u) return;
+            const bought = booksList.filter(b => (b.applicants || []).some(a => (typeof a === 'object' ? a.name : a) === u.name));
+            const content = document.getElementById('modal-content');
+
+            content.innerHTML = `
+                <button onclick="window.closeModal()" class="mb-4 w-fit bg-slate-100 p-2.5 rounded-full hover:bg-slate-200 transition-colors">
+                    <i data-lucide="x" size="18"></i>
+                </button>
+                <div class="mb-6">
+                    <span class="text-xs font-black text-emerald-600">${window.escapeHtml(u.family || '가정 미지정')}</span>
+                    <h2 class="text-3xl font-black text-emerald-950">${window.escapeHtml(u.name)}</h2>
+                </div>
+                <div class="grid grid-cols-2 gap-4 mb-6">
+                    <div class="bg-emerald-50 p-4 rounded-2xl border border-emerald-100">
+                        <p class="text-xs font-bold text-emerald-600 uppercase tracking-widest">지출</p>
+                        <p class="text-xl font-black text-emerald-950 font-mono">${u.totalSpent.toLocaleString()}원</p>
+                    </div>
+                    <div class="bg-orange-50 p-4 rounded-2xl border border-orange-100">
+                        <p class="text-xs font-bold text-orange-600 uppercase tracking-widest">잔액</p>
+                        <p class="text-xl font-black text-orange-950 font-mono">${u.balance.toLocaleString()}원</p>
+                    </div>
+                </div>
+                <div class="space-y-2 overflow-y-auto flex-1 pr-1 no-scrollbar">
+                    ${bought.length === 0 ? '<div class="text-center py-12 text-slate-400 font-bold text-xs">구입 확정된 도서가 없습니다.</div>' : bought.map(b => {
+                        const app = (b.applicants || []).find(a => (typeof a === 'object' ? a.name : a) === u.name);
+                        const round = typeof app === 'object' ? (app.round || 1) : 1;
+                        const prc = (typeof app === 'object' && app.actualPrice !== undefined) ? Number(app.actualPrice) : (Number(b.price) || 0);
+                        return `
+                            <div class="p-3.5 bg-slate-50 rounded-xl flex justify-between items-center font-bold text-xs border border-slate-100">
+                                <div class="flex-1 min-w-0 pr-2">
+                                    <span class="text-[9px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-black mr-1">${round}차</span>
+                                    <span class="truncate align-middle">${window.escapeHtml(b.title)}</span>
+                                </div>
+                                <span class="text-emerald-600 font-mono whitespace-nowrap">${prc.toLocaleString()}원</span>
+                                <button onclick="window.handleCancelPurchase(${b.id}, ${u.id})" class="ml-2 px-2.5 py-1 bg-rose-100 text-rose-600 rounded-lg flex-shrink-0 text-[10px] hover:bg-rose-500 hover:text-white transition-colors">삭제</button>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+                <button onclick="window.closeModal()" class="mt-6 w-full py-4 bg-emerald-500 text-white rounded-3xl font-black hover:bg-emerald-600 transition-colors shadow-lg">확인 완료</button>
+            `;
+
+            document.getElementById('modal-container').classList.remove('hidden');
+            setTimeout(() => content.classList.remove('translate-x-full'), 10);
+            lucide.createIcons();
+        };
+
+        window.closeModal = function() {
+            const content = document.getElementById('modal-content');
+            content.classList.add('translate-x-full');
+            setTimeout(() => document.getElementById('modal-container').classList.add('hidden'), 300);
+        };
+    </script>
+</body>
+</html>
