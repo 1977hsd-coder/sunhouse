@@ -1,0 +1,1688 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>동광복지재단 소모품 관리대장</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone@7.23.8/babel.min.js"></script>
+    
+    <style>
+        @media print {
+            @page { size: portrait; margin: 10mm; }
+            body * { visibility: hidden; }
+            .printable, .printable * { visibility: visible; }
+            .printable { position: absolute; left: 0; top: 0; width: 100%; background-color: white; }
+            .no-print { display: none !important; }
+            table, th, td { border-color: black !important; -webkit-print-color-adjust: exact; }
+            .report-page { position: relative; page-break-after: always; }
+            .page-footer { position: absolute; bottom: 0; width: 100%; text-align: center; font-size: 10pt; }
+        }
+        body { font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; }
+        
+        #root:empty::before {
+            content: "프로그램을 안전하게 불러오는 중입니다. 잠시만 기다려주세요...";
+            display: flex; justify-content: center; align-items: center;
+            height: 100vh; font-size: 1.2rem; color: #666;
+        }
+        .custom-scroll::-webkit-scrollbar { width: 6px; }
+        .custom-scroll::-webkit-scrollbar-track { background: #f1f1f1; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        .custom-scroll::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .custom-checkbox { width: 1.2rem; height: 1.2rem; cursor: pointer; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo, useRef } = React;
+
+        const IconBase = ({ children, size=24, className="", ...props }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>{children}</svg>
+        );
+
+        const Package = (p) => <IconBase {...p}><path d="M16.5 9.4 7.55 4.24"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.29 7 12 12 20.71 7"/><line x1="12" y1="22" x2="12" y2="12"/></IconBase>;
+        const PackagePlus = (p) => <IconBase {...p}><path d="M16.5 9.4 7.55 4.24"/><path d="M3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16v-8"/><polyline points="3.29 7 12 12 20.71 7"/><line x1="12" y1="22" x2="12" y2="12"/><line x1="16" y1="5" x2="22" y2="5"/><line x1="19" y1="2" x2="19" y2="8"/></IconBase>;
+        const PackageMinus = (p) => <IconBase {...p}><path d="M16.5 9.4 7.55 4.24"/><path d="M3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16v-8"/><polyline points="3.29 7 12 12 20.71 7"/><line x1="12" y1="22" x2="12" y2="12"/><line x1="16" y1="5" x2="22" y2="5"/></IconBase>;
+        const ClipboardList = (p) => <IconBase {...p}><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/></IconBase>;
+        const Home = (p) => <IconBase {...p}><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></IconBase>;
+        const Trash2 = (p) => <IconBase {...p}><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></IconBase>;
+        const LayoutDashboard = (p) => <IconBase {...p}><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></IconBase>;
+        const Printer = (p) => <IconBase {...p}><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect width="12" height="8" x="6" y="14"/></IconBase>;
+        const FileText = (p) => <IconBase {...p}><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" x2="8" y1="13" y2="13"/><line x1="16" x2="8" y1="17" y2="17"/><polyline points="10 9 9 9 8 9"/></IconBase>;
+        const Edit2 = (p) => <IconBase {...p}><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></IconBase>;
+        const Check = (p) => <IconBase {...p}><polyline points="20 6 9 17 4 12"/></IconBase>;
+        const X = (p) => <IconBase {...p}><path d="M18 6 6 18"/><path d="m6 6 12 12"/></IconBase>;
+        const Star = (p) => <IconBase {...p}><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></IconBase>;
+        const FileSpreadsheet = (p) => <IconBase {...p}><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><path d="M8 13h2"/><path d="M8 17h2"/><path d="M14 13h2"/><path d="M14 17h2"/></IconBase>;
+        const ShoppingCart = (p) => <IconBase {...p}><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></IconBase>;
+        const LogOut = (p) => <IconBase {...p}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></IconBase>;
+        const Upload = (p) => <IconBase {...p}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></IconBase>;
+        const Download = (p) => <IconBase {...p}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></IconBase>;
+        const Pencil = (p) => <IconBase {...p}><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></IconBase>;
+        const Plus = (p) => <IconBase {...p}><path d="M5 12h14"/><path d="M12 5v14"/></IconBase>;
+        const FileSearch = (p) => <IconBase {...p}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><circle cx="10" cy="14" r="3"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></IconBase>;
+        const RefreshCw = (p) => <IconBase {...p}><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></IconBase>;
+        const Search = (p) => <IconBase {...p}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></IconBase>;
+        const Database = (p) => <IconBase {...p}><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></IconBase>;
+        const Layers = (p) => <IconBase {...p}><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></IconBase>;
+        const History = (p) => <IconBase {...p}><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></IconBase>;
+        const ShieldCheck = (p) => <IconBase {...p}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></IconBase>;
+
+        const DEPARTMENTS = ['기린초', '바위솔', '붓꽃', '구절초', '주방', '지원실'];
+        const INBOUND_TYPES = ['구입', '후원'];
+
+        const formatDateTimeStamp = (dateObj = new Date()) => {
+            const pad = (n) => String(n).padStart(2, '0');
+            return `${dateObj.getFullYear()}-${pad(dateObj.getMonth() + 1)}-${pad(dateObj.getDate())}_${pad(dateObj.getHours())}${pad(dateObj.getMinutes())}`;
+        };
+
+        const formatDisplayTime = (isoString) => {
+            if (!isoString) return '기록 없음';
+            try {
+                const d = new Date(isoString);
+                const pad = (n) => String(n).padStart(2, '0');
+                return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+            } catch {
+                return isoString;
+            }
+        };
+
+        function App() {
+            // 커스텀 모달 (alert, confirm 대체)
+            const [modal, setModal] = useState({ isOpen: false, message: '', type: 'alert', onConfirm: null, onCancel: null });
+
+            const showAlert = (message) => {
+                setModal({ isOpen: true, message, type: 'alert', onConfirm: () => setModal({ isOpen: false }) });
+            };
+
+            const showConfirm = (message, onConfirmCallback, onCancelCallback = () => {}) => {
+                setModal({ 
+                    isOpen: true, 
+                    message, 
+                    type: 'confirm', 
+                    onConfirm: () => { setModal({ isOpen: false }); onConfirmCallback(); },
+                    onCancel: () => { setModal({ isOpen: false }); onCancelCallback(); }
+                });
+            };
+
+            const [activeTab, setActiveTab] = useState('dashboard');
+            const overwriteInputRef = useRef(null);
+            const mergeInputRef = useRef(null);
+            const isFirstRender = useRef(true);
+            
+            const [transactions, setTransactions] = useState(() => {
+                try { return JSON.parse(localStorage.getItem('consumable_transactions')) || []; } catch { return []; }
+            });
+            const [favorites, setFavorites] = useState(() => {
+                try { return JSON.parse(localStorage.getItem('consumable_favorites')) || []; } catch { return []; }
+            });
+            const [purchaseRequests, setPurchaseRequests] = useState(() => {
+                try { return JSON.parse(localStorage.getItem('consumable_purchase_requests')) || []; } catch { return []; }
+            });
+            const [itemLocations, setItemLocations] = useState(() => {
+                try { return JSON.parse(localStorage.getItem('consumable_item_locations')) || {}; } catch { return {}; }
+            });
+
+            // 누적 백업 메타 정보 및 자동 안전 스냅샷
+            const [backupMeta, setBackupMeta] = useState(() => {
+                try { return JSON.parse(localStorage.getItem('consumable_backup_meta')) || { lastBackupAt: null, dirty: false, backupCount: 0 }; } catch { return { lastBackupAt: null, dirty: false, backupCount: 0 }; }
+            });
+            const [autoSnapshots, setAutoSnapshots] = useState(() => {
+                try { return JSON.parse(localStorage.getItem('consumable_auto_snapshots')) || []; } catch { return []; }
+            });
+            const [backupModalOpen, setBackupModalOpen] = useState(false);
+
+            useEffect(() => localStorage.setItem('consumable_transactions', JSON.stringify(transactions)), [transactions]);
+            useEffect(() => localStorage.setItem('consumable_favorites', JSON.stringify(favorites)), [favorites]);
+            useEffect(() => localStorage.setItem('consumable_purchase_requests', JSON.stringify(purchaseRequests)), [purchaseRequests]);
+            useEffect(() => localStorage.setItem('consumable_item_locations', JSON.stringify(itemLocations)), [itemLocations]);
+            useEffect(() => localStorage.setItem('consumable_backup_meta', JSON.stringify(backupMeta)), [backupMeta]);
+            useEffect(() => {
+                try { localStorage.setItem('consumable_auto_snapshots', JSON.stringify(autoSnapshots)); } catch (e) {}
+            }, [autoSnapshots]);
+
+            // 데이터 변경 시 '미백업 변경 있음' 표시
+            useEffect(() => {
+                if (isFirstRender.current) {
+                    isFirstRender.current = false;
+                    return;
+                }
+                setBackupMeta(prev => (prev.dirty ? prev : { ...prev, dirty: true }));
+            }, [transactions, favorites, purchaseRequests, itemLocations]);
+
+            // 자동 안전 스냅샷 저장 (최근 5개 유지)
+            const saveAutoSnapshot = (reason, overrideData = null) => {
+                const payload = overrideData || { transactions, favorites, purchaseRequests, itemLocations };
+                const newSnap = {
+                    id: Date.now(),
+                    savedAt: new Date().toISOString(),
+                    reason,
+                    txCount: (payload.transactions || []).length,
+                    data: payload
+                };
+                setAutoSnapshots(prev => [newSnap, ...prev].slice(0, 5));
+            };
+
+            const [inboundList, setInboundList] = useState([]);
+            const [outboundList, setOutboundList] = useState([]);
+
+            const [inboundForm, setInboundForm] = useState({ date: new Date().toISOString().slice(0, 10), type: '구입', itemName: '', quantity: 1, location: '창고' });
+            const [outboundForm, setOutboundForm] = useState({ date: new Date().toISOString().slice(0, 10), department: DEPARTMENTS[0], itemName: '', quantity: 1 });
+            
+            const [currentMonth, setCurrentMonth] = useState(new Date().toISOString().slice(0, 7));
+            const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+            
+            const [selectedInbound, setSelectedInbound] = useState(new Set());
+            const [selectedOutbound, setSelectedOutbound] = useState(new Set());
+
+            const [itemHistorySearch, setItemHistorySearch] = useState('');
+            const [historyDateRange, setHistoryDateRange] = useState({ start: '', end: '' });
+
+            const [editingId, setEditingId] = useState(null);
+            const [editValue, setEditValue] = useState('');
+            const [editLocation, setEditLocation] = useState(''); 
+            const [editingLocItem, setEditingLocItem] = useState(null);
+            const [newLocValue, setNewLocValue] = useState('');
+
+            const [editingListId, setEditingListId] = useState(null);
+            const [editingListForm, setEditingListForm] = useState({ itemName: '', quantity: 1 });
+            const [statementConfig, setStatementConfig] = useState({ isOpen: false, month: new Date().toISOString().slice(0, 7), department: DEPARTMENTS[0], mode: 'all' });
+
+            // 보고서 인쇄 셀 넓이 수동 설정 State (모든 열 기본값 포함)
+            const [reportColWidths, setReportColWidths] = useState({ no: 36, itemName: 150, numbers: 44, location: 80, dept: 42 });
+
+            const inventory = useMemo(() => {
+                const stock = {};
+                [...transactions].sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0)).forEach(t => {
+                    if (!t || !t.itemName) return;
+                    if (!stock[t.itemName]) {
+                        stock[t.itemName] = { name: t.itemName, quantity: 0, location: '-', txLocation: '-', lastUpdated: t.date };
+                    }
+                    if (t.category === 'inbound') {
+                        stock[t.itemName].quantity += Number(t.quantity || 0);
+                        stock[t.itemName].txLocation = t.location; 
+                    } else if (t.category === 'outbound') {
+                        stock[t.itemName].quantity -= Number(t.quantity || 0);
+                    }
+                });
+
+                return Object.values(stock).map(item => {
+                    item.location = itemLocations[item.name] || item.txLocation || '-';
+                    return item;
+                }).filter(item => item.quantity !== 0 || item.quantity === 0)
+                .sort((a, b) => {
+                    const aFav = favorites.includes(a.name);
+                    const bFav = favorites.includes(b.name);
+                    if (aFav && !bFav) return -1;
+                    if (!aFav && bFav) return 1;
+                    return a.name.localeCompare(b.name);
+                });
+            }, [transactions, itemLocations, favorites]); 
+
+            const itemHistoryData = useMemo(() => {
+                if (!itemHistorySearch) return null;
+                
+                const currentStockItem = inventory.find(i => i && i.name === itemHistorySearch);
+                const currentStock = currentStockItem ? (Number(currentStockItem.quantity) || 0) : 0;
+                const currentLocation = currentStockItem ? (currentStockItem.location || '-') : '-';
+
+                const history = transactions
+                    .filter(t => {
+                        if (!t || t.itemName !== itemHistorySearch) return false;
+                        const txDate = t.date || '';
+                        const start = historyDateRange.start || '0000-00-00';
+                        const end = historyDateRange.end || '9999-12-31';
+                        return txDate >= start && txDate <= end;
+                    })
+                    .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)); 
+
+                const totalIn = history.filter(t => t && t.category === 'inbound').reduce((acc, cur) => acc + (Number(cur.quantity) || 0), 0);
+                const totalOut = history.filter(t => t && t.category === 'outbound').reduce((acc, cur) => acc + (Number(cur.quantity) || 0), 0);
+
+                return { name: itemHistorySearch, currentStock, currentLocation, totalIn, totalOut, history };
+            }, [itemHistorySearch, transactions, inventory, historyDateRange]);
+
+            const purchaseNeededItems = useMemo(() => {
+                return inventory.filter(item => item.quantity < 0 || (item.quantity === 0 && favorites.includes(item.name))).map(item => ({
+                    ...item, 
+                    deficit: item.quantity < 0 ? Math.abs(item.quantity) : 0,
+                    isFavoriteZero: item.quantity === 0 && favorites.includes(item.name)
+                }));
+            }, [inventory, favorites]);
+
+            const aggregatedPurchaseList = useMemo(() => {
+                const summary = {};
+                purchaseNeededItems.forEach(item => {
+                    if(!summary[item.name]) summary[item.name] = { name: item.name, total: 0, details: [] };
+                    summary[item.name].total += item.deficit;
+                    if (item.deficit > 0) {
+                        summary[item.name].details.push(`재고부족(${item.deficit})`);
+                    } else if (item.isFavoriteZero) {
+                        summary[item.name].details.push(`즐겨찾기 소진`);
+                    }
+                });
+                purchaseRequests.filter(r => r.status !== 'completed').forEach(req => {
+                    if(!summary[req.itemName]) summary[req.itemName] = { name: req.itemName, total: 0, details: [] };
+                    summary[req.itemName].total += (Number(req.quantity) || 0);
+                    summary[req.itemName].details.push(`${req.department}(${req.quantity})`);
+                });
+                return Object.values(summary).sort((a,b) => a.name.localeCompare(b.name));
+            }, [purchaseNeededItems, purchaseRequests]);
+
+            const departmentStatusList = useMemo(() => {
+                const targetDept = outboundForm.department;
+                const targetMonth = outboundForm.date.slice(0, 7);
+                const map = new Map();
+
+                const getItem = (date, name) => {
+                    const key = `${date}-${name}`;
+                    if (!map.has(key)) {
+                        const stockItem = inventory.find(i => i.name === name);
+                        const currentStock = stockItem ? stockItem.quantity : 0;
+                        map.set(key, {
+                            key, date, itemName: name, currentStock, 
+                            outboundQty: 0, requestQty: 0, pendingOutboundQty: 0, pendingRequestQty: 0,
+                            txIds: [], reqIds: [], pendingIds: []
+                        });
+                    }
+                    return map.get(key);
+                };
+
+                transactions.filter(t => t && t.category === 'outbound' && t.department === targetDept && (t.date || '').startsWith(targetMonth)).forEach(t => {
+                    const item = getItem(t.date, t.itemName);
+                    item.outboundQty += (Number(t.quantity) || 0);
+                    item.txIds.push(t.id);
+                });
+
+                purchaseRequests.filter(r => r && r.department === targetDept && (r.date || '').startsWith(targetMonth) && r.status !== 'completed').forEach(r => {
+                    const item = getItem(r.date, r.itemName);
+                    item.requestQty += (Number(r.quantity) || 0);
+                    item.reqIds.push(r.id);
+                });
+
+                outboundList.filter(t => t && t.department === targetDept && (t.date || '').startsWith(targetMonth)).forEach(t => {
+                    const item = getItem(t.date, t.itemName);
+                    if (t.isRequest) item.pendingRequestQty += (Number(t.quantity) || 0);
+                    else item.pendingOutboundQty += (Number(t.quantity) || 0);
+                    item.pendingIds.push(t.tempId);
+                });
+
+                return Array.from(map.values())
+                    .map(item => ({...item, totalQty: item.outboundQty + item.requestQty + item.pendingOutboundQty + item.pendingRequestQty}))
+                    .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0) || a.itemName.localeCompare(b.itemName));
+            }, [transactions, purchaseRequests, outboundForm.date, outboundForm.department, outboundList, inventory]);
+
+            const statementData = useMemo(() => {
+                if (!statementConfig.isOpen) return [];
+                const summary = {};
+                const { month, department, mode } = statementConfig;
+
+                const isIncluded = (date, itemName, dept) => {
+                    if (dept !== department) return false;
+                    if (mode === 'selected') return selectedOutbound.has(`${date}-${itemName}`);
+                    return (date || '').startsWith(month);
+                };
+
+                const getInit = (name) => summary[name] || { name, outbound: 0, purchase: 0 };
+                
+                transactions.forEach(t => {
+                    if (t && t.category === 'outbound' && isIncluded(t.date, t.itemName, t.department)) {
+                        const item = getInit(t.itemName); 
+                        item.outbound += (Number(t.quantity) || 0); 
+                        item.date = t.date; 
+                        summary[t.itemName] = item;
+                    }
+                });
+
+                purchaseRequests.forEach(r => {
+                    if (r && r.status !== 'completed' && isIncluded(r.date, r.itemName, r.department)) {
+                        const item = getInit(r.itemName); 
+                        item.purchase += (Number(r.quantity) || 0); 
+                        item.date = r.date; 
+                        summary[r.itemName] = item;
+                    }
+                });
+
+                return Object.values(summary).sort((a, b) => {
+                    const aFav = favorites.includes(a.name);
+                    const bFav = favorites.includes(b.name);
+                    if (aFav && !bFav) return -1;
+                    if (!aFav && bFav) return 1;
+                    return a.name.localeCompare(b.name);
+                });
+            }, [transactions, purchaseRequests, statementConfig, selectedOutbound, favorites]); 
+
+            const inboundStatusList = useMemo(() => {
+                const targetMonth = inboundForm.date.slice(0, 7);
+                const saved = transactions.filter(t => t && t.category === 'inbound' && (t.date || '').startsWith(targetMonth)).map(t => ({ ...t, isPending: false }));
+                const pending = inboundList.filter(t => t && (t.date || '').startsWith(targetMonth)).map(t => ({ ...t, id: t.tempId, isPending: true }));
+                return [...saved, ...pending].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0) || (b.id || 0) - (a.id || 0));
+            }, [transactions, inboundForm.date, inboundList]);
+
+            const allItemNames = useMemo(() => {
+                const names = new Set();
+                inventory.forEach(i => names.add(i.name));
+                transactions.forEach(t => { if(t && t.itemName) names.add(t.itemName); });
+                favorites.forEach(f => names.add(f));
+                return Array.from(names).sort();
+            }, [inventory, transactions, favorites]);
+
+            // 누적 데이터 기간 요약
+            const cumulativePeriod = useMemo(() => {
+                const dates = transactions.map(t => t && t.date).filter(Boolean).sort();
+                if (dates.length === 0) return '데이터 없음';
+                return `${dates[0]} ~ ${dates[dates.length - 1]}`;
+            }, [transactions]);
+
+            const monthlyReportData = useMemo(() => {
+                if (!currentMonth) return [];
+                const reportItems = {};
+                const start = new Date(currentMonth + '-01');
+                const end = new Date(new Date(currentMonth + '-01').setMonth(start.getMonth() + 1));
+                
+                allItemNames.forEach(name => { 
+                    const defaultLoc = itemLocations[name] || '-';
+                    reportItems[name] = { name, prevStock: 0, inboundPurchase: 0, inboundDonation: 0, totalOutbound: 0, outboundByDept: {}, currentStock: 0, location: defaultLoc }; 
+                    DEPARTMENTS.forEach(d => reportItems[name].outboundByDept[d] = 0); 
+                });
+
+                const sortedTransactions = [...transactions].sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+                sortedTransactions.forEach(t => {
+                    if (!t || !t.itemName) return;
+                    const item = reportItems[t.itemName];
+                    if (!item) return;
+                    
+                    if (t.category === 'inbound' && t.location && t.location !== '-') {
+                        item.location = t.location;
+                    }
+
+                    const tDate = new Date(t.date || 0);
+                    if (tDate < start) {
+                        t.category === 'inbound' ? item.prevStock += (Number(t.quantity) || 0) : item.prevStock -= (Number(t.quantity) || 0);
+                    } else if (tDate >= start && tDate < end) {
+                        if (t.category === 'inbound') {
+                            t.subType === '구입' ? item.inboundPurchase += (Number(t.quantity) || 0) : item.inboundDonation += (Number(t.quantity) || 0);
+                        } else { 
+                            item.totalOutbound += (Number(t.quantity) || 0); 
+                            if (DEPARTMENTS.includes(t.department)) item.outboundByDept[t.department] += (Number(t.quantity) || 0); 
+                        }
+                    }
+                });
+
+                return Object.values(reportItems).map(i => ({...i, currentStock: i.prevStock + i.inboundPurchase + i.inboundDonation - i.totalOutbound}))
+                    .filter(i => {
+                        const hasData = i.prevStock !== 0 || i.inboundPurchase !== 0 || i.inboundDonation !== 0 || i.totalOutbound !== 0 || i.currentStock !== 0;
+                        if (!hasData) return false;
+                        if (favorites.includes(i.name) || i.currentStock > 0 || i.inboundPurchase > 0 || i.inboundDonation > 0 || i.totalOutbound > 0) return true;
+                        return false;
+                    }).sort((a, b) => {
+                        const aFav = favorites.includes(a.name);
+                        const bFav = favorites.includes(b.name);
+                        if (aFav && !bFav) return -1;
+                        if (!aFav && bFav) return 1;
+                        return a.name.localeCompare(b.name);
+                    });
+            }, [transactions, currentMonth, favorites, allItemNames, itemLocations]); 
+
+            const reportPages = useMemo(() => {
+                if (monthlyReportData.length === 0) return [[]];
+                const pages = [];
+                const ITEMS_PER_PAGE = 33; 
+                for (let i = 0; i < monthlyReportData.length; i += ITEMS_PER_PAGE) {
+                    pages.push(monthlyReportData.slice(i, i + ITEMS_PER_PAGE));
+                }
+                return pages;
+            }, [monthlyReportData]);
+
+            const startEdit = (t) => { setEditingId(t.id); setEditValue(t.quantity); setEditLocation(t.location || ''); };
+            const saveEdit = (id) => {
+                const newQuantity = Number(editValue);
+                if (newQuantity <= 0) return showAlert('수량은 0보다 커야 합니다.');
+                setTransactions(prev => prev.map(t => t.id === id ? { ...t, quantity: newQuantity, location: editLocation } : t));
+                setEditingId(null); setEditValue(''); setEditLocation('');
+            };
+
+            const startEditLocation = (item) => { setEditingLocItem(item.name); setNewLocValue(item.location === '-' ? '' : item.location); };
+            const saveLocation = (itemName) => { setItemLocations(prev => ({...prev, [itemName]: newLocValue})); setEditingLocItem(null); };
+            const handleSelectFavoriteForInbound = (favName) => {
+                const existingItem = inventory.find(i => i.name === favName);
+                setInboundForm({ ...inboundForm, itemName: favName, location: existingItem ? existingItem.location : inboundForm.location, quantity: 1 });
+            };
+
+            const startEditList = (item) => { setEditingListId(item.tempId); setEditingListForm({ itemName: item.itemName, quantity: item.quantity }); };
+            const saveEditList = (tempId) => {
+                setOutboundList(prev => prev.map(item => item.tempId === tempId ? { ...item, ...editingListForm, quantity: Number(editingListForm.quantity) } : item));
+                setEditingListId(null);
+            };
+
+            const adjustInboundQuantity = (delta) => {
+                setInboundForm(prev => ({ ...prev, quantity: Math.max(1, Number(prev.quantity) + delta) }));
+            };
+            const adjustOutboundQuantity = (delta) => {
+                setOutboundForm(prev => ({ ...prev, quantity: Math.max(1, Number(prev.quantity) + delta) }));
+            };
+
+            const addInboundToList = (e) => {
+                e.preventDefault();
+                if (!inboundForm.itemName || inboundForm.quantity <= 0) return showAlert('품명과 수량을 확인해주세요.');
+                const newItem = { tempId: Date.now(), category: 'inbound', date: inboundForm.date, subType: inboundForm.type, itemName: inboundForm.itemName, quantity: Number(inboundForm.quantity), location: inboundForm.location, department: '-' };
+                setInboundList([...inboundList, newItem]);
+                setInboundForm({ ...inboundForm, itemName: '', quantity: 1, location: '창고' });
+            };
+
+            const saveInboundBatch = () => {
+                if (inboundList.length === 0) return showAlert('저장할 내역이 없습니다.');
+                
+                showConfirm(`총 ${inboundList.length}건의 입고 내역을 저장하시겠습니까?`, () => {
+                    let newTransactions = [];
+                    let updatedRequests = [...purchaseRequests];
+                    let updatedLocations = {...itemLocations};
+                    let autoOutboundCount = 0;
+
+                    inboundList.forEach(item => {
+                        if(item.location) updatedLocations[item.itemName] = item.location;
+                        const newInboundTx = { ...item, id: Date.now() + Math.random() }; 
+                        delete newInboundTx.tempId;
+                        newTransactions.push(newInboundTx);
+
+                        let remainingInbound = item.quantity;
+                        updatedRequests = updatedRequests.map(req => {
+                            if (req.itemName === item.itemName && req.status !== 'completed' && remainingInbound > 0) {
+                                let processQty = 0;
+                                if (req.quantity <= remainingInbound) { processQty = req.quantity; remainingInbound -= req.quantity; req.status = 'completed'; }
+                                else { processQty = remainingInbound; req.quantity -= remainingInbound; remainingInbound = 0; }
+                                newTransactions.push({ id: Date.now() + Math.random(), category: 'outbound', date: item.date, subType: '출고', itemName: req.itemName, quantity: processQty, location: '구매입고즉시출고', department: req.department });
+                                autoOutboundCount++;
+                            }
+                            return req;
+                        });
+                    });
+
+                    const nextTx = [...newTransactions, ...transactions];
+                    setTransactions(nextTx);
+                    setPurchaseRequests(updatedRequests);
+                    setItemLocations(updatedLocations);
+                    setInboundList([]);
+                    saveAutoSnapshot(`입고 ${inboundList.length}건 저장`, { transactions: nextTx, favorites, purchaseRequests: updatedRequests, itemLocations: updatedLocations });
+                    showAlert(`저장 완료! (자동 출고 처리: ${autoOutboundCount}건)`);
+                });
+            };
+
+            const removeInboundListItem = (tempId) => { setInboundList(inboundList.filter(item => item.tempId !== tempId)); };
+
+            const addOutboundToList = (e) => {
+                e.preventDefault();
+                if (!outboundForm.itemName || outboundForm.quantity <= 0) return showAlert('품명과 수량을 확인해주세요.');
+                
+                const reqQty = Number(outboundForm.quantity);
+                const itemNameClean = outboundForm.itemName.trim(); 
+                const item = inventory.find(i => i.name === itemNameClean);
+                const currentStock = item ? item.quantity : 0;
+
+                const available = Math.max(0, currentStock);
+                const pendingOutboundQty = outboundList
+                    .filter(i => !i.isRequest && i.itemName === itemNameClean)
+                    .reduce((sum, i) => sum + i.quantity, 0);
+                
+                const realAvailable = Math.max(0, available - pendingOutboundQty);
+                const toOutbound = Math.min(realAvailable, reqQty);
+                const toPurchase = reqQty - toOutbound;
+                const newItems = [];
+
+                if (toOutbound > 0) {
+                    newItems.push({ tempId: Date.now(), category: 'outbound', isRequest: false, date: outboundForm.date, department: outboundForm.department, itemName: itemNameClean, quantity: toOutbound, subType: '출고', location: '출고됨' });
+                }
+                if (toPurchase > 0) {
+                     newItems.push({ tempId: Date.now() + 1, category: null, isRequest: true, date: outboundForm.date, department: outboundForm.department, itemName: itemNameClean, quantity: toPurchase, subType: null, location: null });
+                }
+                setOutboundList([...outboundList, ...newItems]);
+                setOutboundForm({...outboundForm, itemName: '', quantity: 1});
+            };
+
+            const saveOutboundBatch = () => {
+                if (outboundList.length === 0) return showAlert('저장할 내역이 없습니다.');
+                showConfirm(`총 ${outboundList.length}건의 신청 내역을 저장하시겠습니까?`, () => {
+                    let newTransactions = [];
+                    let newRequests = [];
+                    outboundList.forEach(item => {
+                        if (item.isRequest) {
+                            newRequests.push({ id: Date.now() + Math.random(), date: item.date, department: item.department, itemName: item.itemName, quantity: item.quantity, status: 'requested' });
+                        } else {
+                            newTransactions.push({ id: Date.now() + Math.random(), category: 'outbound', date: item.date, subType: '출고', itemName: item.itemName, quantity: item.quantity, location: '출고됨', department: item.department });
+                        }
+                    });
+
+                    const nextTx = newTransactions.length > 0 ? [...newTransactions, ...transactions] : transactions;
+                    const nextReq = newRequests.length > 0 ? [...newRequests, ...purchaseRequests] : purchaseRequests;
+
+                    if (newTransactions.length > 0) setTransactions(nextTx);
+                    if (newRequests.length > 0) setPurchaseRequests(nextReq);
+                    setOutboundList([]);
+                    saveAutoSnapshot(`출고/신청 ${outboundList.length}건 저장`, { transactions: nextTx, favorites, purchaseRequests: nextReq, itemLocations });
+                    showAlert('일괄 저장되었습니다.');
+                });
+            };
+
+            const removeOutboundListItem = (tempId) => { setOutboundList(outboundList.filter(item => item.tempId !== tempId)); };
+
+            const toggleAllInbound = (e) => {
+                if (e.target.checked) setSelectedInbound(new Set(inboundStatusList.map(item => item.id)));
+                else setSelectedInbound(new Set());
+            };
+
+            const toggleInbound = (id) => {
+                const newSet = new Set(selectedInbound);
+                if (newSet.has(id)) newSet.delete(id);
+                else newSet.add(id);
+                setSelectedInbound(newSet);
+            };
+
+            const bulkDeleteInbound = () => {
+                if (selectedInbound.size === 0) return;
+                showConfirm(`선택한 ${selectedInbound.size}건의 항목을 모두 삭제하시겠습니까?`, () => {
+                    saveAutoSnapshot(`입고 ${selectedInbound.size}건 삭제 전 백업`);
+                    setInboundList(prev => prev.filter(item => !selectedInbound.has(item.tempId)));
+                    setTransactions(prev => prev.filter(item => !selectedInbound.has(item.id)));
+                    setSelectedInbound(new Set());
+                });
+            };
+
+            const toggleAllOutbound = (e) => {
+                if (e.target.checked) setSelectedOutbound(new Set(departmentStatusList.map(item => item.key)));
+                else setSelectedOutbound(new Set());
+            };
+
+            const toggleOutbound = (key) => {
+                const newSet = new Set(selectedOutbound);
+                if (newSet.has(key)) newSet.delete(key);
+                else newSet.add(key);
+                setSelectedOutbound(newSet);
+            };
+
+            const bulkDeleteOutbound = () => {
+                if (selectedOutbound.size === 0) return;
+                showConfirm(`선택한 ${selectedOutbound.size}건의 항목을 모두 삭제하시겠습니까?`, () => {
+                    saveAutoSnapshot(`출고 ${selectedOutbound.size}건 삭제 전 백업`);
+                    let txIdsToRemove = [], reqIdsToRemove = [], pendingIdsToRemove = [];
+                    departmentStatusList.forEach(item => {
+                        if (selectedOutbound.has(item.key)) {
+                            txIdsToRemove.push(...item.txIds);
+                            reqIdsToRemove.push(...item.reqIds);
+                            pendingIdsToRemove.push(...item.pendingIds);
+                        }
+                    });
+                    if (txIdsToRemove.length > 0) setTransactions(prev => prev.filter(t => !txIdsToRemove.includes(t.id)));
+                    if (reqIdsToRemove.length > 0) setPurchaseRequests(prev => prev.filter(r => !reqIdsToRemove.includes(r.id)));
+                    if (pendingIdsToRemove.length > 0) setOutboundList(prev => prev.filter(p => !pendingIdsToRemove.includes(p.tempId)));
+                    setSelectedOutbound(new Set());
+                });
+            };
+
+            const deleteStatusItem = (item) => {
+                showConfirm(`[${item.date} ${item.itemName}]의\n출고 ${item.outboundQty + item.pendingOutboundQty}개, 구매신청 ${item.requestQty + item.pendingRequestQty}개를 모두 삭제하시겠습니까?\n(되돌릴 수 없습니다)`, () => {
+                    if (item.txIds.length > 0) setTransactions(prev => prev.filter(t => !item.txIds.includes(t.id)));
+                    if (item.reqIds.length > 0) setPurchaseRequests(prev => prev.filter(r => !item.reqIds.includes(r.id)));
+                    if (item.pendingIds.length > 0) setOutboundList(prev => prev.filter(p => !item.pendingIds.includes(p.tempId)));
+                });
+            };
+
+            const deleteTransaction = (id) => { 
+                showConfirm('정말 이 기록을 삭제하시겠습니까?', () => setTransactions(prev => prev.filter(t => t.id !== id))); 
+            };
+            
+            const toggleFavorite = (name) => { setFavorites(favorites.includes(name) ? favorites.filter(n => n !== name) : [...favorites, name]); };
+            
+            // 전체 누적 JSON 백업 (타임스탬프 포함으로 백업 파일이 덮어쓰이지 않고 누적 보관됨)
+            const handleExportBackup = (silent = false) => {
+                const now = new Date();
+                const stamp = formatDateTimeStamp(now);
+                const backupPayload = {
+                    version: '2.0',
+                    type: 'cumulative_backup',
+                    backupDate: now.toISOString(),
+                    totalRecords: transactions.length,
+                    period: cumulativePeriod,
+                    transactions,
+                    favorites,
+                    purchaseRequests,
+                    itemLocations
+                };
+                const blob = new Blob([JSON.stringify(backupPayload, null, 2)], { type: "application/json" });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement("a");
+                link.href = url;
+                link.download = `동광복지재단_소모품_누적백업_${stamp}.json`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+
+                setBackupMeta(prev => ({
+                    lastBackupAt: now.toISOString(),
+                    dirty: false,
+                    backupCount: (prev.backupCount || 0) + 1
+                }));
+                if (!silent) {
+                    showAlert(`누적 백업 파일이 다운로드되었습니다.\n\n• 파일명: 동광복지재단_소모품_누적백업_${stamp}.json\n• 총 누적 기록: ${transactions.length}건`);
+                }
+            };
+
+            // 엑셀용 누적 기록 CSV 내보내기
+            const handleExportCSV = () => {
+                if (transactions.length === 0) return showAlert('내보낼 입출고 기록이 없습니다.');
+                const escapeCSV = (val) => {
+                    const str = String(val === undefined || val === null ? '' : val);
+                    if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+                        return '"' + str.replace(/"/g, '""') + '"';
+                    }
+                    return str;
+                };
+                const headers = ['날짜', '구분', '상세(구입/후원/부서)', '품명', '수량', '보관장소'];
+                const sorted = [...transactions].sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+                const rows = sorted.map(t => {
+                    const loc = (t.category === 'outbound' || t.location === '출고됨' || t.location === '구매입고즉시출고')
+                        ? (itemLocations[t.itemName] || '-')
+                        : (t.location || '-');
+                    return [
+                        t.date || '',
+                        t.category === 'inbound' ? '입고' : '출고',
+                        t.category === 'inbound' ? (t.subType || '') : (t.department || ''),
+                        t.itemName || '',
+                        t.quantity || 0,
+                        loc
+                    ].map(escapeCSV).join(',');
+                });
+                const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\n');
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const stamp = formatDateTimeStamp(new Date());
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `동광복지재단_소모품_누적기록_${stamp}.csv`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+                showAlert(`엑셀용 누적 기록(CSV)이 다운로드되었습니다.\n(총 ${transactions.length}건)`);
+            };
+
+            const handleExitAndBackup = () => {
+                showConfirm('현재까지 누적된 데이터를 백업(다운로드)하고 종료하시겠습니까?', () => {
+                    handleExportBackup(true);
+                    setTimeout(() => { window.open('','_self').close(); window.close(); }, 600);
+                });
+            };
+
+            // [New] 누적 병합 불러오기 (기존 데이터 유지 + 백업 파일에서 없는 기록만 중복 없이 합치기)
+            const handleMergeImportBackup = (event) => {
+                const file = event.target.files[0];
+                if (!file) return;
+                showConfirm(
+                    "선택한 백업 파일을 현재 데이터와 '누적 병합'하시겠습니까?\n\n• 기존 데이터는 지워지지 않습니다.\n• 중복된 기록은 자동으로 제외하고 새로운 기록만 합칩니다.",
+                    () => {
+                        const reader = new FileReader();
+                        reader.onload = (e) => {
+                            try {
+                                const data = JSON.parse(e.target.result);
+                                if (!Array.isArray(data.transactions)) {
+                                    showAlert("올바른 백업 파일(.json)이 아닙니다.");
+                                    return;
+                                }
+
+                                saveAutoSnapshot('누적 병합 전 자동 백업');
+
+                                // 입출고 기록 중복 체크 및 병합
+                                const existingIds = new Set(transactions.map(t => t && t.id).filter(id => id !== undefined && id !== null));
+                                const existingSigs = new Set(transactions.map(t => `${t.date}|${t.category}|${t.subType || ''}|${t.department || ''}|${t.itemName}|${t.quantity}`));
+                                
+                                let addedTxCount = 0;
+                                let skippedTxCount = 0;
+                                const mergedTx = [...transactions];
+
+                                data.transactions.forEach(t => {
+                                    if (!t || !t.itemName) return;
+                                    const hasId = t.id !== undefined && t.id !== null;
+                                    const sig = `${t.date}|${t.category}|${t.subType || ''}|${t.department || ''}|${t.itemName}|${t.quantity}`;
+                                    if ((hasId && existingIds.has(t.id)) || (!hasId && existingSigs.has(sig))) {
+                                        skippedTxCount++;
+                                    } else {
+                                        const itemToAdd = hasId ? t : { ...t, id: Date.now() + Math.random() };
+                                        mergedTx.push(itemToAdd);
+                                        if (hasId) existingIds.add(t.id);
+                                        existingSigs.add(sig);
+                                        addedTxCount++;
+                                    }
+                                });
+
+                                // 날짜순 정렬
+                                mergedTx.sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+
+                                // 즐겨찾기 병합
+                                const mergedFavorites = Array.from(new Set([...favorites, ...(Array.isArray(data.favorites) ? data.favorites : [])]));
+
+                                // 구매 신청 병합
+                                const existingReqIds = new Set(purchaseRequests.map(r => r && r.id));
+                                const mergedRequests = [...purchaseRequests];
+                                (Array.isArray(data.purchaseRequests) ? data.purchaseRequests : []).forEach(r => {
+                                    if (r && !existingReqIds.has(r.id)) {
+                                        mergedRequests.push(r);
+                                        existingReqIds.add(r.id);
+                                    }
+                                });
+
+                                // 보관 위치 병합 (현재 설정 우선 유지, 없는 품목만 백업에서 추가)
+                                const mergedLocations = { ...(data.itemLocations || {}), ...itemLocations };
+
+                                setTransactions(mergedTx);
+                                setFavorites(mergedFavorites);
+                                setPurchaseRequests(mergedRequests);
+                                setItemLocations(mergedLocations);
+
+                                showAlert(`누적 병합이 완료되었습니다!\n\n• 새로 추가된 기록: ${addedTxCount}건\n• 중복으로 건너뛴 기록: ${skippedTxCount}건\n• 현재 총 누적 기록: ${mergedTx.length}건`);
+                            } catch (error) {
+                                showAlert("파일을 읽는 중 오류가 발생했습니다. 올바른 .json 백업 파일인지 확인해 주세요.");
+                            } finally {
+                                if (mergeInputRef.current) mergeInputRef.current.value = '';
+                            }
+                        };
+                        reader.readAsText(file);
+                    },
+                    () => {
+                        if (mergeInputRef.current) mergeInputRef.current.value = '';
+                    }
+                );
+            };
+
+            // 전체 덮어쓰기 복원 (안전하게 직전 상태 자동 스냅샷 저장 후 복원)
+            const handleOverwriteImportBackup = (event) => {
+                const file = event.target.files[0];
+                if (!file) return;
+                showConfirm("현재 데이터를 모두 지우고 선택한 백업 파일로 '전체 덮어쓰기' 하시겠습니까?\n(복구용 자동 스냅샷이 1개 저장됩니다)", () => {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        try {
+                            const data = JSON.parse(e.target.result);
+                            if (Array.isArray(data.transactions)) {
+                                saveAutoSnapshot('전체 덮어쓰기 직전 상태');
+                                setTransactions(data.transactions);
+                                if (Array.isArray(data.favorites)) setFavorites(data.favorites);
+                                if (Array.isArray(data.purchaseRequests)) setPurchaseRequests(data.purchaseRequests);
+                                if (data.itemLocations) setItemLocations(data.itemLocations);
+                                showAlert(`전체 복원이 완료되었습니다. (총 ${data.transactions.length}건)`);
+                            } else {
+                                showAlert("올바른 백업 파일(.json)이 아닙니다.");
+                            }
+                        } catch (error) { showAlert("파일 오류가 발생했습니다."); }
+                        if(overwriteInputRef.current) overwriteInputRef.current.value = ''; 
+                    };
+                    reader.readAsText(file);
+                }, () => {
+                    if(overwriteInputRef.current) overwriteInputRef.current.value = '';
+                });
+            };
+
+            // 자동 스냅샷에서 복구
+            const restoreFromSnapshot = (snap) => {
+                showConfirm(`[${formatDisplayTime(snap.savedAt)}]\n"${snap.reason}" 시점(총 ${snap.txCount}건)으로 되돌리시겠습니까?`, () => {
+                    const d = snap.data;
+                    setTransactions(d.transactions || []);
+                    setFavorites(d.favorites || []);
+                    setPurchaseRequests(d.purchaseRequests || []);
+                    setItemLocations(d.itemLocations || {});
+                    showAlert('선택한 시점으로 복구되었습니다.');
+                });
+            };
+
+            const handlePrintInNewWindow = (elementId, title, isLandscape = false) => {
+                const content = document.getElementById(elementId);
+                if (!content) return showAlert('내용 없음');
+                const win = window.open('', '_blank', 'width=1000,height=800');
+                if(!win) return showAlert('팝업 차단됨. 브라우저 설정에서 팝업을 허용해주세요.');
+                
+                const scriptStart = '<script src="https://cdn.tailwindcss.com"><' + '/script>';
+                const printAction = '<script>onload=()=>{setTimeout(()=>{print()},500)}<' + '/script>';
+                
+                let htmlStr = `<!DOCTYPE html><html><head><title>${title}</title>`;
+                htmlStr += scriptStart;
+                htmlStr += `<style>@media print{@page{size:${isLandscape?'landscape':'portrait'};margin:10mm}body{-webkit-print-color-adjust:exact}.report-page{margin-bottom:0;border:none;position:relative;page-break-after:always;}.page-break{page-break-before:always;break-before:page}.page-footer{position:absolute;bottom:0;width:100%;text-align:center;font-size:10pt;}table,th,td{border-color:black!important}.report-page{margin-bottom:20px;background:white;position:relative;padding-bottom:50px;}</style></head><body>`;
+                htmlStr += content.innerHTML;
+                htmlStr += printAction;
+                htmlStr += `</body></html>`;
+                
+                win.document.write(htmlStr);
+                win.document.close();
+            };
+
+            const handleOpenStatement = () => {
+                const mode = selectedOutbound.size > 0 ? 'selected' : 'all';
+                setStatementConfig({ isOpen: true, month: outboundForm.date.slice(0, 7), department: outboundForm.department, mode: mode });
+            };
+
+            const handleSortAndRecalculate = () => {
+                showConfirm('모든 입출고 기록을 날짜순으로 정렬하고 재고를 재계산하시겠습니까?\n(데이터 순서가 변경됩니다)', () => {
+                    const sorted = [...transactions].sort((a, b) => {
+                        const dateA = new Date(a.date || 0);
+                        const dateB = new Date(b.date || 0);
+                        if (dateA - dateB !== 0) return dateA - dateB;
+                        return (a.id || 0) - (b.id || 0);
+                    });
+                    setTransactions(sorted);
+                    showAlert('정렬 및 재계산이 완료되었습니다.');
+                });
+            };
+
+            const TabButton = ({ id, icon: Icon, label }) => (
+                <button onClick={() => setActiveTab(id)} className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors ${activeTab === id ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+                    <Icon size={18} /> {label}
+                </button>
+            );
+
+            return (
+                <div className="min-h-screen bg-slate-100 p-4 md:p-8 font-sans text-slate-800">
+                    
+                    {/* 자체 알림창(모달) */}
+                    {modal.isOpen && (
+                        <div className="fixed inset-0 z-[100] bg-black/60 flex items-center justify-center p-4">
+                            <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden">
+                                <div className="p-6">
+                                    <p className="text-gray-800 text-center whitespace-pre-line leading-relaxed">{modal.message}</p>
+                                </div>
+                                <div className="flex border-t border-gray-100 bg-gray-50">
+                                    {modal.type === 'confirm' && (
+                                        <button onClick={modal.onCancel} className="flex-1 py-3 text-gray-500 font-bold hover:bg-gray-100 transition-colors border-r border-gray-100">취소</button>
+                                    )}
+                                    <button onClick={modal.onConfirm} className="flex-1 py-3 text-blue-600 font-bold hover:bg-blue-50 transition-colors">확인</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 숨겨진 파일 입력창 (누적 병합용 / 전체 덮어쓰기용) */}
+                    <input type="file" ref={mergeInputRef} onChange={handleMergeImportBackup} className="hidden" accept=".json"/>
+                    <input type="file" ref={overwriteInputRef} onChange={handleOverwriteImportBackup} className="hidden" accept=".json"/>
+
+                    {/* [New] 데이터 누적 백업 & 복원 센터 모달 */}
+                    {backupModalOpen && (
+                        <div className="fixed inset-0 z-50 bg-black/50 flex justify-center items-center p-4">
+                            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto custom-scroll">
+                                <div className="flex justify-between items-center p-6 border-b sticky top-0 bg-white z-10">
+                                    <h2 className="text-xl font-bold flex items-center gap-2 text-slate-800">
+                                        <Database className="text-blue-600" size={24} /> 데이터 누적 백업 및 복원 센터
+                                    </h2>
+                                    <button onClick={() => setBackupModalOpen(false)} className="text-gray-400 hover:text-gray-600 p-1"><X size={24} /></button>
+                                </div>
+
+                                <div className="p-6 space-y-6">
+                                    {/* 현재 누적 현황 요약 */}
+                                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
+                                        <div>
+                                            <div className="text-xs text-gray-500 font-medium">현재 누적 기록</div>
+                                            <div className="text-2xl font-extrabold text-blue-700 mt-1">{transactions.length}건</div>
+                                            <div className="text-[11px] text-gray-400 mt-0.5">품목 {inventory.length}개</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-xs text-gray-500 font-medium">데이터 누적 기간</div>
+                                            <div className="text-sm font-bold text-slate-700 mt-2">{cumulativePeriod}</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-xs text-gray-500 font-medium">마지막 백업 일시</div>
+                                            <div className={`text-sm font-bold mt-2 ${backupMeta.dirty ? 'text-amber-600' : 'text-green-600'}`}>
+                                                {formatDisplayTime(backupMeta.lastBackupAt)}
+                                            </div>
+                                            <div className="text-[11px] mt-0.5">
+                                                {backupMeta.dirty ? <span className="text-amber-600 font-semibold">● 미백업 변경사항 있음</span> : <span className="text-green-600">✓ 최신 상태 백업됨</span>}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* 1. 누적 백업 내보내기 */}
+                                    <div className="space-y-3">
+                                        <h3 className="font-bold text-slate-700 flex items-center gap-2 text-sm">
+                                            <Download size={16} className="text-blue-600"/> 1. 누적 백업 파일 저장하기
+                                        </h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                            <button onClick={() => handleExportBackup(false)} className="flex flex-col items-start p-4 rounded-xl border-2 border-blue-200 bg-blue-50/50 hover:bg-blue-50 transition-colors text-left">
+                                                <div className="font-bold text-blue-800 flex items-center gap-2"><Download size={16}/> 전체 누적 백업 (.json)</div>
+                                                <p className="text-xs text-blue-700/80 mt-1 leading-relaxed">지금까지 누적된 모든 기록·즐겨찾기·위치를 날짜/시간별 파일로 저장합니다. (복원·병합용)</p>
+                                            </button>
+                                            <button onClick={handleExportCSV} className="flex flex-col items-start p-4 rounded-xl border border-emerald-200 bg-emerald-50/50 hover:bg-emerald-50 transition-colors text-left">
+                                                <div className="font-bold text-emerald-800 flex items-center gap-2"><FileSpreadsheet size={16}/> 엑셀용 누적 기록 (.csv)</div>
+                                                <p className="text-xs text-emerald-700/80 mt-1 leading-relaxed">전체 입출고 누적 내역을 엑셀(Excel)에서 바로 열어볼 수 있는 표 파일로 저장합니다.</p>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* 2. 누적 병합 / 덮어쓰기 불러오기 */}
+                                    <div className="space-y-3">
+                                        <h3 className="font-bold text-slate-700 flex items-center gap-2 text-sm">
+                                            <Upload size={16} className="text-indigo-600"/> 2. 백업 파일 불러오기 (누적 병합 / 복원)
+                                        </h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                            <button onClick={() => mergeInputRef.current.click()} className="flex flex-col items-start p-4 rounded-xl border-2 border-indigo-200 bg-indigo-50/50 hover:bg-indigo-50 transition-colors text-left">
+                                                <div className="font-bold text-indigo-800 flex items-center gap-2"><Layers size={16}/> 누적 병합 불러오기 (추천)</div>
+                                                <p className="text-xs text-indigo-700/80 mt-1 leading-relaxed">현재 데이터는 유지하고, 백업 파일에서 없는 기록만 중복 없이 합쳐서 누적합니다.</p>
+                                            </button>
+                                            <button onClick={() => overwriteInputRef.current.click()} className="flex flex-col items-start p-4 rounded-xl border border-gray-200 bg-gray-50 hover:bg-gray-100 transition-colors text-left">
+                                                <div className="font-bold text-gray-800 flex items-center gap-2"><Upload size={16}/> 전체 덮어쓰기 복원</div>
+                                                <p className="text-xs text-gray-600 mt-1 leading-relaxed">현재 화면의 데이터를 지우고, 선택한 백업 파일 시점의 데이터로 완전히 교체합니다.</p>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* 3. 브라우저 내부 자동 안전 스냅샷 */}
+                                    <div className="space-y-3">
+                                        <h3 className="font-bold text-slate-700 flex items-center gap-2 text-sm">
+                                            <History size={16} className="text-slate-600"/> 3. 최근 자동 임시 저장본 (최대 5개 보관)
+                                        </h3>
+                                        <div className="border rounded-xl overflow-hidden bg-white">
+                                            {autoSnapshots.length === 0 ? (
+                                                <div className="p-6 text-center text-xs text-gray-400">
+                                                    입고/출고 일괄 저장이나 대량 삭제·병합 시 자동으로 복구 시점이 여기에 기록됩니다.
+                                                </div>
+                                            ) : (
+                                                <ul className="divide-y divide-gray-100">
+                                                    {autoSnapshots.map(snap => (
+                                                        <li key={snap.id} className="p-3 flex items-center justify-between gap-2 hover:bg-slate-50 text-xs">
+                                                            <div>
+                                                                <div className="font-bold text-slate-700">{snap.reason} <span className="text-blue-600 font-normal">({snap.txCount}건)</span></div>
+                                                                <div className="text-gray-400 mt-0.5">{formatDisplayTime(snap.savedAt)}</div>
+                                                            </div>
+                                                            <button onClick={() => restoreFromSnapshot(snap)} className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 font-medium whitespace-nowrap">
+                                                                이 시점으로 복구
+                                                            </button>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800 leading-relaxed">
+                                        💡 <b>누적 보관 팁:</b> 백업 파일명에는 날짜와 시간이 자동으로 붙으므로, 다운로드한 파일을 PC의 <b>구글 드라이브 / 원드라이브 폴더</b>에 모아두시면 날짜별로 누적 보관되며 다른 PC에서도 <b>[누적 병합]</b>으로 안전하게 이어서 작업할 수 있습니다.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    <datalist id="item-list">
+                        {allItemNames.map(name => <option key={name} value={name} />)}
+                    </datalist>
+
+                    {/* 숨겨진 구매 필요 목록 인쇄용 영역 */}
+                    <div className="hidden">
+                        <div id="printable-purchase-list" className="p-8 bg-white text-black">
+                            <div className="text-center mb-8">
+                                <h1 className="text-3xl font-bold underline underline-offset-8 mb-2">구 매 필 요 목 록</h1>
+                                <p className="text-sm text-gray-600">출력일시: {new Date().toLocaleString('ko-KR')}</p>
+                            </div>
+                            <table className="w-full border-collapse border border-black text-sm text-center">
+                                <thead>
+                                    <tr className="bg-gray-100">
+                                        <th className="border border-black p-2 w-16">No</th>
+                                        <th className="border border-black p-2">품명</th>
+                                        <th className="border border-black p-2 w-24">필요수량</th>
+                                        <th className="border border-black p-2 w-64">상세내역</th>
+                                        <th className="border border-black p-2 w-32">비고</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {aggregatedPurchaseList.length === 0 ? (
+                                        <tr><td colSpan="5" className="border border-black p-8 text-gray-500">구매가 필요한 품목이 없습니다.</td></tr>
+                                    ) : (
+                                        aggregatedPurchaseList.map((item, idx) => (
+                                            <tr key={idx}>
+                                                <td className="border border-black p-2">{idx + 1}</td>
+                                                <td className="border border-black p-2 text-left px-4 font-medium">{item.name}</td>
+                                                <td className="border border-black p-2 font-bold text-red-600">{item.total > 0 ? item.total : '-'}</td>
+                                                <td className="border border-black p-2 text-xs text-gray-700">{item.details.join(', ')}</td>
+                                                <td className="border border-black p-2"></td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    {/* 인쇄 모달 (출고명세서) */}
+                    {statementConfig.isOpen && (
+                        <div className="fixed inset-0 z-50 bg-black/50 flex justify-center items-center p-4">
+                            <div className="bg-white p-6 md:p-8 rounded-xl shadow-2xl w-full max-w-3xl h-[90vh] overflow-auto">
+                                <div className="flex justify-between items-center mb-6">
+                                    <h2 className="text-xl font-bold flex items-center gap-2"><FileSpreadsheet className="text-blue-600" size={24}/> 출고 명세서 인쇄</h2>
+                                    <button onClick={() => setStatementConfig({ ...statementConfig, isOpen: false })}><X size={24} /></button>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8 bg-gray-50 p-4 rounded-lg">
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500">월 선택</label>
+                                        <input type="month" value={statementConfig.month} onChange={e => setStatementConfig({...statementConfig, month: e.target.value})} className="w-full p-2 border rounded disabled:bg-gray-100 disabled:text-gray-400" disabled={statementConfig.mode === 'selected'} />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500">부서 선택</label>
+                                        <select value={statementConfig.department} onChange={e => setStatementConfig({...statementConfig, department: e.target.value})} className="w-full p-2 border rounded disabled:bg-gray-100 disabled:text-gray-400" disabled={statementConfig.mode === 'selected'}>
+                                            {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+                                        </select>
+                                    </div>
+                                    <div className="flex items-end"><button onClick={() => handlePrintInNewWindow('printable-statement-area', '출고 명세서')} className="w-full bg-blue-600 text-white font-bold py-2 rounded flex justify-center items-center gap-2"><Printer size={16} /> 인쇄하기</button></div>
+                                </div>
+                                
+                                {statementConfig.mode === 'selected' && (
+                                    <div className="mb-4 p-2 bg-blue-50 text-blue-700 text-sm rounded text-center">💡 선택한 항목들로 구성된 명세서입니다. (월/부서 변경 불가)</div>
+                                )}
+
+                                <div id="printable-statement-area" className="border-2 border-black p-8 min-h-[800px] bg-white text-black">
+                                    <div className="text-center mb-10"><h1 className="text-3xl font-bold underline underline-offset-8">출 고 명 세 서</h1><p className="mt-2 text-sm text-gray-600">(공급받는 자 보관용)</p></div>
+                                    <div className="flex mb-8 border border-black"><div className="w-1/2 border-r border-black p-2"><div className="text-xs text-gray-500">[공급자]</div><div className="font-bold text-lg">소모품 관리 담당</div><div className="mt-2 text-sm">담당자: ____________ (인)</div></div><div className="w-1/2 p-2"><div className="text-xs text-gray-500">[공급받는 자]</div><div className="font-bold text-lg text-blue-800">{statementConfig.department}</div><div className="mt-2 text-sm">일자: {statementConfig.month}월분</div></div></div>
+                                    <table className="w-full border-collapse border border-black text-sm text-center mb-8"><thead><tr className="bg-gray-100"><th className="border border-black p-2 w-10">No</th><th className="border border-black p-2">일자</th><th className="border border-black p-2">품명</th><th className="border border-black p-2 w-20">신청</th><th className="border border-black p-2 w-20">출고</th><th className="border border-black p-2 w-20">구매대기</th><th className="border border-black p-2">비고</th></tr></thead><tbody>{statementData.length === 0 ? <tr><td colSpan="7" className="border border-black p-10 text-gray-400">내역 없음</td></tr> : statementData.map((item, idx) => (<tr key={item.name + idx}><td className="border border-black p-2">{idx + 1}</td><td className="border border-black p-2">{item.date}</td><td className="border border-black p-2 text-left px-4 font-medium">{item.name}</td><td className="border border-black p-2">{item.outbound + item.purchase}</td><td className="border border-black p-2">{item.outbound}</td><td className="border border-black p-2">{item.purchase > 0 ? item.purchase : ''}</td><td className="border border-black p-2"></td></tr>))}<tr className="bg-gray-50 font-bold"><td colSpan="3" className="border border-black p-2 text-right px-4">합 계</td><td className="border border-black p-2">{statementData.reduce((sum, i) => sum + i.outbound + i.purchase, 0)}</td><td className="border border-black p-2">{statementData.reduce((sum, i) => sum + i.outbound, 0)}</td><td className="border border-black p-2">{statementData.reduce((sum, i) => sum + i.purchase, 0)}</td><td className="border border-black p-2"></td></tr></tbody></table>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    <header className="flex flex-col md:flex-row justify-between items-center bg-white p-6 rounded-xl shadow-sm border-l-4 border-blue-600 mb-6 gap-4">
+                        <div className="text-center md:text-left">
+                            <h1 className="text-2xl font-bold text-gray-800">동광복지재단 소모품 관리대장</h1>
+                            <div className="flex flex-wrap items-center justify-center md:justify-start gap-2 mt-1.5">
+                                <span className="text-gray-500 text-sm">부서별 입출고 및 재고 통합 관리</span>
+                                <span className="text-gray-300">|</span>
+                                {backupMeta.dirty ? (
+                                    <button onClick={() => setBackupModalOpen(true)} className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 hover:bg-amber-200 transition-colors">
+                                        ● 백업 필요 (누적 {transactions.length}건)
+                                    </button>
+                                ) : (
+                                    <button onClick={() => setBackupModalOpen(true)} className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors">
+                                        <ShieldCheck size={13}/> {backupMeta.lastBackupAt ? `백업됨 (${formatDisplayTime(backupMeta.lastBackupAt).slice(5)})` : `누적 ${transactions.length}건`}
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                        <div className="flex flex-wrap gap-2 justify-center md:justify-end">
+                            <div className="bg-blue-50 text-blue-700 px-3 py-2 rounded-lg text-sm font-medium">품목 {inventory.length}개</div>
+                            <button onClick={handleSortAndRecalculate} className="bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-1 shadow-sm"><RefreshCw size={16} /> 정렬/재계산</button>
+                            <button onClick={() => setBackupModalOpen(true)} className="bg-indigo-600 text-white hover:bg-indigo-700 px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-1.5 shadow-sm transition-colors">
+                                <Database size={16} /> 누적 백업/병합
+                            </button>
+                            <button onClick={() => handleExportBackup(false)} className="bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-1 shadow-sm"><Download size={16} /> 빠른 백업</button>
+                            <button onClick={handleExitAndBackup} className="bg-slate-800 text-white hover:bg-slate-900 px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-1 shadow-md transition-colors"><LogOut size={16} /> 종료</button>
+                        </div>
+                    </header>
+
+                    <div className="flex flex-wrap rounded-xl overflow-hidden shadow-sm bg-white divide-x divide-gray-100 mb-6">
+                        <TabButton id="dashboard" icon={LayoutDashboard} label="재고 현황" />
+                        <TabButton id="inbound" icon={PackagePlus} label="입고 등록" />
+                        <TabButton id="outbound" icon={PackageMinus} label="출고/구매 신청" />
+                        <TabButton id="history" icon={ClipboardList} label="입출고 기록" />
+                        <TabButton id="itemHistory" icon={FileSearch} label="품목별 기록" />
+                        <TabButton id="report" icon={FileText} label="보고서 인쇄" />
+                    </div>
+
+                    <div className="bg-white rounded-xl shadow-sm min-h-[500px] p-4 md:p-6">
+                        
+                        {activeTab === 'dashboard' && (
+                            <div className="flex flex-col lg:flex-row gap-6 h-full">
+                                <div className="w-full lg:w-5/12 bg-red-50 border-l-4 border-red-600 p-4 md:p-6 rounded-lg shadow-sm">
+                                    <div className="flex items-center gap-3 mb-4">
+                                        <div className="bg-red-100 p-2 rounded-full"><ShoppingCart className="text-red-600" size={24} /></div>
+                                        <h3 className="text-red-900 font-bold text-lg">구매 필요 목록 ({aggregatedPurchaseList.length})</h3>
+                                        <button onClick={() => handlePrintInNewWindow('printable-purchase-list', '구매 필요 목록')} className="ml-auto text-xs bg-white text-gray-700 hover:bg-gray-50 px-3 py-1.5 rounded-lg border shadow-sm flex items-center gap-1 font-medium transition-colors">
+                                            <Printer size={14}/> 인쇄
+                                        </button>
+                                    </div>
+                                    <div className="bg-white rounded-lg border border-red-200 overflow-hidden max-h-[500px] overflow-y-auto custom-scroll">
+                                        <table className="w-full text-sm text-left">
+                                            <thead className="bg-red-50 text-red-800 sticky top-0"><tr className="border-b border-red-100"><th className="p-3">품명</th><th className="p-3">필요수량</th><th className="p-3">상세내역</th></tr></thead>
+                                            <tbody>
+                                                {aggregatedPurchaseList.length === 0 ? (
+                                                    <tr><td colSpan="3" className="p-8 text-center text-gray-400">필요한 품목이 없습니다.</td></tr>
+                                                ) : (
+                                                    aggregatedPurchaseList.map((item, idx) => (
+                                                        <tr key={idx} className="border-b last:border-0 hover:bg-gray-50">
+                                                            <td className="p-3 font-medium">{item.name}</td>
+                                                            <td className="p-3 font-bold text-red-600">{item.total > 0 ? item.total : '-'}</td>
+                                                            <td className="p-3 text-gray-600 text-xs">{item.details.join(', ')}</td>
+                                                        </tr>
+                                                    ))
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                                <div className="w-full lg:w-7/12 flex flex-col">
+                                    <div className="flex flex-wrap justify-between items-center mb-4 gap-2">
+                                        <h2 className="text-xl font-bold flex items-center gap-2"><Package className="text-blue-600" /> 전체 재고 현황</h2>
+                                        <button onClick={() => setShowFavoritesOnly(!showFavoritesOnly)} className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border bg-white border-gray-300 text-gray-600 hover:bg-gray-50"><Star size={16} fill={showFavoritesOnly ? "currentColor" : "none"} /> {showFavoritesOnly ? '전체 보기' : '즐겨찾기만 보기'}</button>
+                                    </div>
+                                    <div className="overflow-x-auto custom-scroll max-h-[600px] border rounded-lg">
+                                        <table className="w-full text-left border-collapse min-w-[500px]">
+                                            <thead>
+                                                <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 text-sm uppercase sticky top-0">
+                                                    <th className="p-3 text-center">중요</th><th className="p-3">품명</th><th className="p-3">재고</th><th className="p-3">위치</th><th className="p-3">상태</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {inventory.filter(item => !showFavoritesOnly || favorites.includes(item.name)).map((item, idx) => (
+                                                <tr key={idx} className={`hover:bg-slate-50 ${item.quantity < 0 ? 'bg-red-50' : ''}`}>
+                                                    <td className="p-3 text-center"><button onClick={() => toggleFavorite(item.name)} className="text-yellow-400 hover:scale-110 transition-transform"><Star size={20} fill={favorites.includes(item.name) ? "currentColor" : "none"} className={favorites.includes(item.name) ? "text-yellow-400" : "text-gray-300"} /></button></td>
+                                                    <td className="p-3 font-medium">{item.name}</td>
+                                                    <td className="p-3">{item.quantity < 0 ? <span className="text-red-600 font-bold">{Math.abs(item.quantity)}개 부족</span> : <span className="text-blue-600 font-bold">{item.quantity}</span>}</td>
+                                                    <td className="p-3 text-gray-600">
+                                                        {editingLocItem === item.name ? (
+                                                            <div className="flex items-center gap-1"><input type="text" className="border rounded px-2 py-1 text-sm w-24" value={newLocValue} onChange={(e) => setNewLocValue(e.target.value)} onKeyDown={(e) => { if(e.key === 'Enter') saveLocation(item.name); }} autoFocus /><button onClick={() => saveLocation(item.name)} className="text-green-600 hover:bg-green-50 p-1 rounded"><Check size={16}/></button></div>
+                                                        ) : (
+                                                            <div className="flex items-center gap-2 group cursor-pointer" onClick={() => startEditLocation(item)}><Home size={14} className="text-gray-400" /> <span>{item.location}</span><Edit2 size={12} className="opacity-0 group-hover:opacity-100 text-gray-400" /></div>
+                                                        )}
+                                                    </td>
+                                                    <td className="p-3">
+                                                        {item.quantity < 0 ? 
+                                                            <span className="bg-red-600 text-white px-2 py-1 rounded-full text-xs font-bold whitespace-nowrap">구입 필요</span> 
+                                                            : (favorites.includes(item.name) && item.quantity <= 3) ? 
+                                                                <span className="bg-orange-100 text-orange-700 px-2 py-1 rounded-full text-xs whitespace-nowrap">재고 부족</span> 
+                                                                : <span className="bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs whitespace-nowrap">여유</span>
+                                                        }
+                                                    </td>
+                                                </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'inbound' && (
+                            <div className="flex flex-col lg:flex-row gap-6 h-full">
+                                <div className="w-full lg:w-3/12 flex flex-col gap-4">
+                                    <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex-1 flex flex-col min-h-[400px]">
+                                        <div className="flex justify-between items-center mb-4">
+                                            <h3 className="font-bold text-gray-700 text-sm">입고 대기 목록 ({inboundList.length})</h3>
+                                            <button onClick={saveInboundBatch} className="bg-green-600 text-white px-3 py-1 rounded-lg text-xs font-bold hover:bg-green-700 transition-colors">일괄 저장</button>
+                                        </div>
+                                        <div className="flex-1 overflow-y-auto custom-scroll border rounded-lg">
+                                            {inboundList.length > 0 ? (
+                                                <table className="w-full text-xs text-left">
+                                                    <thead className="bg-gray-50 sticky top-0"><tr className="border-b"><th className="p-2">품명</th><th className="p-2 w-8">수량</th><th className="p-2 w-10">위치</th><th className="p-2 w-8">관리</th></tr></thead>
+                                                    <tbody>
+                                                        {inboundList.map(item => (
+                                                            <tr key={item.tempId} className="border-b last:border-0 hover:bg-gray-50">
+                                                                <td className="p-2 font-medium">{item.itemName}</td>
+                                                                <td className="p-2 font-bold text-green-600">{item.quantity}</td>
+                                                                <td className="p-2 text-gray-500">{item.location}</td>
+                                                                <td className="p-2"><button type="button" onClick={() => removeInboundListItem(item.tempId)} className="text-red-400 hover:text-red-600 p-1"><X size={14}/></button></td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            ) : <p className="p-10 text-center text-gray-400 text-xs">대기 중인 항목이 없습니다.</p>}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="w-full lg:w-3/12">
+                                    <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 h-full">
+                                        <h2 className="text-xl font-bold flex items-center gap-2 mb-6 pb-4 border-b"><PackagePlus className="text-green-600" /> 물품 입고</h2>
+                                        
+                                        {favorites.length > 0 && (
+                                            <div className="mb-6">
+                                                <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-1"><Star size={14} className="text-yellow-400 fill-current"/> 즐겨찾기 간편 선택</label>
+                                                <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto custom-scroll">
+                                                    {favorites.map(fav => (
+                                                        <button key={fav} type="button" onClick={() => handleSelectFavoriteForInbound(fav)} className={`px-3 py-1 text-xs rounded-full border transition-colors ${inboundForm.itemName === fav ? 'bg-green-100 border-green-300 text-green-800 font-bold shadow-sm' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>{fav}</button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                        
+                                        <form onSubmit={addInboundToList} className="space-y-4">
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div>
+                                                    <label className="block text-xs text-gray-500 mb-1">날짜</label>
+                                                    <input type="date" value={inboundForm.date} onChange={e => setInboundForm({...inboundForm, date: e.target.value})} className="p-2 border rounded-lg w-full text-sm" />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs text-gray-500 mb-1">구분</label>
+                                                    <div className="flex gap-2 items-center h-[38px] text-sm">{INBOUND_TYPES.map(type => <label key={type} className="flex items-center gap-1 cursor-pointer"><input type="radio" checked={inboundForm.type === type} onChange={() => setInboundForm({...inboundForm, type})} /> {type}</label>)}</div>
+                                                </div>
+                                            </div>
+                                            
+                                            <div>
+                                                <label className="block text-xs text-gray-500 mb-1">품명 (자동완성)</label>
+                                                <input type="text" list="item-list" placeholder="품명 입력" value={inboundForm.itemName} onChange={e => setInboundForm({...inboundForm, itemName: e.target.value})} className="w-full p-2 border rounded-lg text-sm" required />
+                                            </div>
+                                            
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div>
+                                                    <label className="block text-xs text-gray-500 mb-1">수량</label>
+                                                    <input type="number" min="1" value={inboundForm.quantity} onChange={e => setInboundForm({...inboundForm, quantity: e.target.value})} className="w-full p-2 border rounded-lg text-sm mb-2" />
+                                                    <div className="flex gap-1">
+                                                         <button type="button" onClick={() => adjustInboundQuantity(-10)} className="flex-1 bg-gray-100 border hover:bg-gray-200 text-gray-600 py-1 rounded text-xs font-medium">-10</button>
+                                                         <button type="button" onClick={() => adjustInboundQuantity(-1)} className="flex-1 bg-gray-100 border hover:bg-gray-200 text-gray-600 py-1 rounded text-xs font-medium">-1</button>
+                                                         <button type="button" onClick={() => adjustInboundQuantity(1)} className="flex-1 bg-blue-50 border border-blue-100 hover:bg-blue-100 text-blue-600 py-1 rounded text-xs font-medium">+1</button>
+                                                         <button type="button" onClick={() => adjustInboundQuantity(10)} className="flex-1 bg-blue-50 border border-blue-100 hover:bg-blue-100 text-blue-600 py-1 rounded text-xs font-medium">+10</button>
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs text-gray-500 mb-1">보관 장소</label>
+                                                    <input type="text" placeholder="위치" value={inboundForm.location} onChange={e => setInboundForm({...inboundForm, location: e.target.value})} className="w-full p-2 border rounded-lg text-sm" />
+                                                </div>
+                                            </div>
+                                            
+                                            <button type="submit" className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg flex justify-center items-center gap-2 text-sm shadow-md hover:bg-blue-700 transition-colors mt-2"><Plus size={18}/> 목록에 추가</button>
+                                        </form>
+                                    </div>
+                                </div>
+                                <div className="w-full lg:w-6/12 bg-slate-50 p-4 md:p-6 rounded-xl flex flex-col min-h-[400px]">
+                                    <div className="flex flex-wrap justify-between items-center mb-4 gap-2">
+                                        <h2 className="text-lg font-bold">📊 {inboundForm.date.slice(5,7)}월 입고 현황 (최신순)</h2>
+                                        {selectedInbound.size > 0 && (
+                                            <button onClick={bulkDeleteInbound} className="bg-red-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-red-700 transition-colors shadow-sm flex items-center gap-1">
+                                                <Trash2 size={14}/> 선택 삭제 ({selectedInbound.size})
+                                            </button>
+                                        )}
+                                    </div>
+                                    <div className="bg-white rounded-lg shadow-sm border overflow-hidden flex-1 flex flex-col">
+                                        <div className="overflow-y-auto custom-scroll flex-1">
+                                            <table className="w-full text-sm text-left min-w-[500px]">
+                                                <thead className="bg-slate-100 text-slate-700 font-bold sticky top-0 shadow-sm">
+                                                    <tr>
+                                                        <th className="p-3 w-10 text-center"><input type="checkbox" className="custom-checkbox" checked={inboundStatusList.length > 0 && inboundStatusList.every(i => selectedInbound.has(i.id))} onChange={toggleAllInbound} /></th>
+                                                        <th className="p-3">날짜</th><th className="p-3">구분</th><th className="p-3">품명</th><th className="p-3">수량</th><th className="p-3">위치</th><th className="p-3 w-12 text-center">관리</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-50">
+                                                    {inboundStatusList.length > 0 ? inboundStatusList.map((item, idx) => (
+                                                        <tr key={idx} className={`hover:bg-slate-50 transition-colors ${selectedInbound.has(item.id) ? 'bg-blue-50/50' : ''}`}>
+                                                            <td className="p-3 text-center"><input type="checkbox" className="custom-checkbox" checked={selectedInbound.has(item.id)} onChange={() => toggleInbound(item.id)} /></td>
+                                                            <td className="p-3 text-gray-500 text-xs">{item.date.slice(5)}</td>
+                                                            <td className="p-3 text-xs"><span className="bg-gray-100 px-2 py-1 rounded font-medium">{item.subType}</span></td>
+                                                            <td className="p-3 font-medium">{item.itemName}</td>
+                                                            <td className="p-3 font-bold text-green-600">{item.quantity}</td>
+                                                            <td className="p-3 text-xs text-gray-500">{item.location}</td>
+                                                            <td className="p-3 text-center"><button onClick={() => deleteTransaction(item.id)} className="text-gray-400 hover:text-red-500 hover:bg-red-50 p-1 rounded transition-colors" title="삭제"><Trash2 size={16}/></button></td>
+                                                        </tr>
+                                                    )) : <tr><td colSpan="7" className="p-12 text-center text-gray-400">입고 내역이 없습니다.</td></tr>}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'outbound' && (
+                            <div className="flex flex-col lg:flex-row gap-6 h-full">
+                                <div className="w-full lg:w-3/12 flex flex-col gap-4">
+                                    <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex-1 flex flex-col min-h-[400px]">
+                                        <div className="flex justify-between items-center mb-4">
+                                            <h3 className="font-bold text-gray-700 text-sm">신청 대기 목록 ({outboundList.length})</h3>
+                                            <button onClick={saveOutboundBatch} className="bg-gray-800 text-white px-3 py-1 rounded-lg text-xs font-bold hover:bg-black transition-colors">일괄 저장</button>
+                                        </div>
+                                        <div className="flex-1 overflow-y-auto custom-scroll border rounded-lg">
+                                            {outboundList.length > 0 ? (
+                                                <table className="w-full text-xs text-left">
+                                                    <thead className="bg-gray-50 sticky top-0"><tr className="border-b"><th className="p-2">구분</th><th className="p-2">품명</th><th className="p-2 w-10">수량</th><th className="p-2 w-10">관리</th></tr></thead>
+                                                    <tbody>
+                                                        {outboundList.map(item => (
+                                                            <tr key={item.tempId} className="border-b last:border-0 hover:bg-gray-50">
+                                                                <td className="p-2"><span className={`px-1.5 py-0.5 rounded font-medium ${item.isRequest ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'}`}>{item.isRequest ? '구매' : '출고'}</span></td>
+                                                                <td className="p-2 font-medium">
+                                                                    {editingListId === item.tempId ? <input type="text" className="w-full border rounded p-1" value={editingListForm.itemName} onChange={e => setEditingListForm({...editingListForm, itemName: e.target.value})} /> : item.itemName}
+                                                                </td>
+                                                                <td className="p-2 font-bold text-gray-700">
+                                                                    {editingListId === item.tempId ? <input type="number" className="w-full border rounded p-1" value={editingListForm.quantity} onChange={e => setEditingListForm({...editingListForm, quantity: e.target.value})} /> : item.quantity}
+                                                                </td>
+                                                                <td className="p-2 flex gap-1">
+                                                                    {editingListId === item.tempId ? (
+                                                                        <button onClick={() => saveEditList(item.tempId)} className="text-green-500 hover:bg-green-50 p-1 rounded"><Check size={14}/></button>
+                                                                    ) : (
+                                                                        <>
+                                                                            <button onClick={() => startEditList(item)} className="text-gray-400 hover:text-blue-500 p-1"><Pencil size={14}/></button>
+                                                                            <button onClick={() => removeOutboundListItem(item.tempId)} className="text-gray-400 hover:text-red-500 p-1"><X size={14}/></button>
+                                                                        </>
+                                                                    )}
+                                                                </td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            ) : <p className="p-10 text-center text-gray-400 text-xs">대기 중인 항목이 없습니다.</p>}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="w-full lg:w-3/12">
+                                    <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 h-full">
+                                        <h2 className="text-lg font-bold flex items-center gap-2 mb-4 pb-2 border-b text-blue-600"><PackageMinus size={20}/> 출고/구매 신청</h2>
+                                        <div className="mb-4 p-3 bg-blue-50 rounded text-xs text-blue-700 font-medium leading-relaxed">💡 품목과 수량을 입력하면 <b>재고 여부에 따라 자동으로 출고/구매로 분류</b>됩니다.</div>
+                                        <form onSubmit={addOutboundToList} className="space-y-4">
+                                            <div><label className="block text-xs text-gray-500 mb-1">날짜</label><input type="date" value={outboundForm.date} onChange={e => setOutboundForm({...outboundForm, date: e.target.value})} className="w-full p-2 border rounded-lg text-sm" /></div>
+                                            <div><label className="block text-xs text-gray-500 mb-1">부서</label><select value={outboundForm.department} onChange={e => setOutboundForm({...outboundForm, department: e.target.value})} className="w-full p-2 border rounded-lg text-sm">{DEPARTMENTS.map(dept => <option key={dept} value={dept}>{dept}</option>)}</select></div>
+                                            <div><label className="block text-xs text-gray-500 mb-1">품명 (자동완성)</label><input type="text" list="item-list" placeholder="품명 입력" value={outboundForm.itemName} onChange={e => setOutboundForm({...outboundForm, itemName: e.target.value})} className="w-full p-2 border rounded-lg text-sm" required /></div>
+                                            
+                                            <div>
+                                                <label className="block text-xs text-gray-500 mb-1">수량</label>
+                                                <input type="number" min="1" value={outboundForm.quantity} onChange={e => setOutboundForm({...outboundForm, quantity: e.target.value})} className="w-full p-2 border rounded-lg text-sm mb-2" />
+                                                <div className="flex gap-1">
+                                                     <button type="button" onClick={() => adjustOutboundQuantity(-10)} className="flex-1 bg-gray-100 border hover:bg-gray-200 text-gray-600 py-1 rounded text-xs font-medium transition-colors">-10</button>
+                                                     <button type="button" onClick={() => adjustOutboundQuantity(-1)} className="flex-1 bg-gray-100 border hover:bg-gray-200 text-gray-600 py-1 rounded text-xs font-medium transition-colors">-1</button>
+                                                     <button type="button" onClick={() => adjustOutboundQuantity(1)} className="flex-1 bg-blue-50 border border-blue-100 hover:bg-blue-100 text-blue-600 py-1 rounded text-xs font-medium transition-colors">+1</button>
+                                                     <button type="button" onClick={() => adjustOutboundQuantity(10)} className="flex-1 bg-blue-50 border border-blue-100 hover:bg-blue-100 text-blue-600 py-1 rounded text-xs font-medium transition-colors">+10</button>
+                                                </div>
+                                            </div>
+
+                                            <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg shadow-md transition-colors flex justify-center items-center gap-2 mt-2"><Plus size={18}/> 목록에 추가 (자동분류)</button>
+                                        </form>
+                                    </div>
+                                </div>
+                                <div className="w-full lg:w-6/12 bg-slate-50 p-4 md:p-6 rounded-xl flex flex-col min-h-[400px]">
+                                    <div className="flex flex-wrap justify-between items-center mb-4 gap-2">
+                                        <h2 className="text-lg font-bold">📊 {outboundForm.department} 현황 ({outboundForm.date.slice(5,7)}월)</h2>
+                                        <div className="flex flex-wrap gap-2">
+                                            {selectedOutbound.size > 0 && (
+                                                <button onClick={bulkDeleteOutbound} className="bg-red-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-red-700 transition-colors shadow-sm flex items-center gap-1">
+                                                    <Trash2 size={14}/> 선택 삭제 ({selectedOutbound.size})
+                                                </button>
+                                            )}
+                                            <button onClick={handleOpenStatement} className="text-xs bg-white text-gray-700 hover:bg-gray-50 px-3 py-1.5 rounded-lg border shadow-sm flex items-center gap-1 font-medium transition-colors">
+                                                <Printer size={14}/> {selectedOutbound.size > 0 ? `선택 항목 명세서 (${selectedOutbound.size})` : '월간 명세서'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className="bg-white rounded-lg shadow-sm border overflow-hidden flex-1 flex flex-col">
+                                        <div className="overflow-y-auto custom-scroll flex-1">
+                                            <table className="w-full text-sm text-left min-w-[600px]">
+                                                <thead className="bg-slate-100 text-slate-700 font-bold sticky top-0 shadow-sm">
+                                                    <tr>
+                                                        <th className="p-3 w-10 text-center"><input type="checkbox" className="custom-checkbox" checked={departmentStatusList.length > 0 && departmentStatusList.every(i => selectedOutbound.has(i.key))} onChange={toggleAllOutbound} /></th>
+                                                        <th className="p-3">날짜</th><th className="p-3">품명</th><th className="p-3 w-14 text-center">현재고</th><th className="p-3 w-12 text-center">신청</th>
+                                                        <th className="p-3 w-14 text-center text-red-600">출고</th><th className="p-3 w-14 text-center text-blue-600">구매</th><th className="p-3 w-12 text-center">관리</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-50">
+                                                    {departmentStatusList.length > 0 ? departmentStatusList.map((item, idx) => (
+                                                        <tr key={idx} className={`hover:bg-slate-50 transition-colors ${selectedOutbound.has(item.key) ? 'bg-blue-50/50' : ''}`}>
+                                                            <td className="p-3 text-center"><input type="checkbox" className="custom-checkbox" checked={selectedOutbound.has(item.key)} onChange={() => toggleOutbound(item.key)} /></td>
+                                                            <td className="p-3 text-gray-500 text-xs">{item.date.slice(5)}</td>
+                                                            <td className="p-3 font-medium">{item.itemName}</td>
+                                                            <td className="p-3 text-center text-gray-600 bg-gray-50/50">{item.currentStock}</td>
+                                                            <td className="p-3 text-center font-bold">{item.totalQty}</td>
+                                                            <td className="p-3 text-center text-red-600 font-medium">
+                                                                {item.outboundQty > 0 ? item.outboundQty : ''}
+                                                                {item.pendingOutboundQty > 0 ? <span className="text-xs text-red-300"> (+{item.pendingOutboundQty})</span> : ''}
+                                                                {item.outboundQty === 0 && item.pendingOutboundQty === 0 ? '-' : ''}
+                                                            </td>
+                                                            <td className="p-3 text-center text-blue-600 font-medium">
+                                                                {item.requestQty > 0 ? item.requestQty : ''}
+                                                                {item.pendingRequestQty > 0 ? <span className="text-xs text-blue-300"> (+{item.pendingRequestQty})</span> : ''}
+                                                                {item.requestQty === 0 && item.pendingRequestQty === 0 ? '-' : ''}
+                                                            </td>
+                                                            <td className="p-3 text-center"><button onClick={() => deleteStatusItem(item)} className="text-gray-400 hover:text-red-500 hover:bg-red-50 p-1 rounded transition-colors" title="삭제"><Trash2 size={16}/></button></td>
+                                                        </tr>
+                                                    )) : <tr><td colSpan="8" className="p-12 text-center text-gray-400">신청 내역이 없습니다.</td></tr>}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'history' && (
+                            <div className="space-y-6">
+                                <div className="flex justify-between items-center bg-gray-50 p-4 rounded-xl border border-gray-200">
+                                    <h2 className="text-lg md:text-xl font-bold flex items-center gap-2"><ClipboardList className="text-slate-600"/> 월별 입출고 전체 기록</h2>
+                                    <input type="month" value={currentMonth} onChange={e => setCurrentMonth(e.target.value)} className="p-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 outline-none font-medium" />
+                                </div>
+                                <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+                                    <div className="overflow-x-auto custom-scroll max-h-[600px]">
+                                        <table className="w-full text-left text-sm min-w-[700px]">
+                                            <thead className="bg-slate-100 text-slate-700 font-bold sticky top-0 shadow-sm">
+                                                <tr><th className="p-4 w-32">날짜</th><th className="p-4 w-20 text-center">구분</th><th className="p-4 w-32">상세내용</th><th className="p-4">품명</th><th className="p-4 text-right w-24">수량</th><th className="p-4 w-40">보관장소</th><th className="p-4 w-24 text-center">관리</th></tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {transactions.filter(t => t && t.date && t.date.startsWith(currentMonth)).sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)).map((t, idx) => (
+                                                <tr key={t.id || idx} className="hover:bg-slate-50 transition-colors">
+                                                    <td className="p-4 text-gray-600 font-medium">{t.date}</td>
+                                                    <td className="p-4 text-center"><span className={`px-2 py-1 rounded-full text-xs font-bold ${t.category === 'inbound' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{t.category === 'inbound' ? '입고' : '출고'}</span></td>
+                                                    <td className="p-4 font-medium text-gray-700">{t.category === 'inbound' ? t.subType : t.department}</td>
+                                                    <td className="p-4 font-bold text-gray-800">{t.itemName}</td>
+                                                    <td className="p-4 text-right">
+                                                        {editingId === t.id ? <input type="number" className="w-16 border rounded px-1 py-0.5 text-right" value={editValue} onChange={e => setEditValue(e.target.value)} autoFocus /> : <b className={t.category === 'inbound' ? 'text-green-600' : 'text-red-600'}>{t.category === 'inbound' ? '+' : '-'}{t.quantity}</b>}
+                                                    </td>
+                                                    <td className="p-4 text-gray-600">
+                                                        {editingId === t.id ? (
+                                                            <input type="text" className="w-full border rounded px-2 py-0.5" value={editLocation} onChange={e => setEditLocation(e.target.value)} />
+                                                        ) : (
+                                                            <span className="text-sm">{(t.category === 'outbound' || t.location === '출고됨' || t.location === '구매입고즉시출고') ? (itemLocations[t.itemName] || '-') : (t.location || '-')}</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="p-4">
+                                                        {editingId === t.id ? 
+                                                            <div className="flex justify-center gap-2"><button onClick={() => saveEdit(t.id)} className="text-green-600 hover:bg-green-50 p-1 rounded"><Check size={18}/></button><button onClick={() => setEditingId(null)} className="text-gray-400 hover:bg-gray-100 p-1 rounded"><X size={18}/></button></div> 
+                                                            : 
+                                                            <div className="flex justify-center gap-2"><button onClick={() => startEdit(t)} className="text-blue-500 hover:bg-blue-50 p-1 rounded"><Edit2 size={16}/></button><button onClick={() => deleteTransaction(t.id)} className="text-gray-400 hover:text-red-500 hover:bg-red-50 p-1 rounded"><Trash2 size={16}/></button></div>
+                                                        }
+                                                    </td>
+                                                </tr>
+                                                ))}
+                                                {transactions.filter(t => t && t.date && t.date.startsWith(currentMonth)).length === 0 && <tr><td colSpan="7" className="p-12 text-center text-gray-400">해당 월의 기록이 없습니다.</td></tr>}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                        
+                        {activeTab === 'itemHistory' && (
+                            <div className="space-y-6">
+                                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                                    <h2 className="text-xl font-bold flex items-center gap-2 mb-6 text-gray-800">
+                                        <FileSearch className="text-blue-600" /> 품목별 상세 기록 조회
+                                    </h2>
+                                    
+                                    <div className="relative mb-8 bg-slate-50 p-5 rounded-xl border border-slate-200">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                            <div>
+                                                <label className="block text-sm font-bold text-gray-700 mb-2">어떤 품목을 찾으시나요?</label>
+                                                <input 
+                                                    type="text" 
+                                                    list="item-list" 
+                                                    placeholder="품목명을 입력하거나 선택하세요" 
+                                                    value={itemHistorySearch} 
+                                                    onChange={e => setItemHistorySearch(e.target.value)} 
+                                                    className="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 outline-none transition-shadow text-sm"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-bold text-gray-700 mb-2">조회 기간 설정</label>
+                                                <div className="flex gap-2 items-center">
+                                                    <input 
+                                                        type="date" 
+                                                        value={historyDateRange.start} 
+                                                        onChange={e => setHistoryDateRange({...historyDateRange, start: e.target.value})} 
+                                                        className="flex-1 p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                                                    />
+                                                    <span className="text-gray-400 font-bold">~</span>
+                                                    <input 
+                                                        type="date" 
+                                                        value={historyDateRange.end} 
+                                                        onChange={e => setHistoryDateRange({...historyDateRange, end: e.target.value})} 
+                                                        className="flex-1 p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <p className="text-xs text-gray-500 mt-2">※ 목록에 있는 품명을 정확히 선택해야 기록이 조회됩니다. (기간 미설정 시 전체 기간 조회)</p>
+                                    </div>
+
+                                    {itemHistoryData ? (
+                                        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                                                <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-2xl border border-blue-200 shadow-sm relative overflow-hidden">
+                                                    <div className="relative z-10">
+                                                        <div className="text-sm text-blue-700 font-bold mb-1">현재 총 재고량</div>
+                                                        <div className="text-4xl font-extrabold text-blue-900">{itemHistoryData.currentStock}</div>
+                                                        <div className="text-xs text-blue-600 mt-2 bg-blue-200/50 inline-block px-2 py-1 rounded">보관위치: {itemHistoryData.currentLocation}</div>
+                                                    </div>
+                                                    <Package className="absolute -right-4 -bottom-4 w-24 h-24 text-blue-200 opacity-50" />
+                                                </div>
+                                                <div className="bg-gradient-to-br from-green-50 to-green-100 p-6 rounded-2xl border border-green-200 shadow-sm relative overflow-hidden">
+                                                    <div className="relative z-10">
+                                                        <div className="text-sm text-green-700 font-bold mb-1">조회 기간 내 입고</div>
+                                                        <div className="text-4xl font-extrabold text-green-900">+{itemHistoryData.totalIn}</div>
+                                                    </div>
+                                                    <PackagePlus className="absolute -right-4 -bottom-4 w-24 h-24 text-green-200 opacity-50" />
+                                                </div>
+                                                <div className="bg-gradient-to-br from-red-50 to-red-100 p-6 rounded-2xl border border-red-200 shadow-sm relative overflow-hidden">
+                                                    <div className="relative z-10">
+                                                        <div className="text-sm text-red-700 font-bold mb-1">조회 기간 내 출고</div>
+                                                        <div className="text-4xl font-extrabold text-red-900">-{itemHistoryData.totalOut}</div>
+                                                    </div>
+                                                    <PackageMinus className="absolute -right-4 -bottom-4 w-24 h-24 text-red-200 opacity-50" />
+                                                </div>
+                                            </div>
+
+                                            <div className="flex justify-between items-center mb-4">
+                                                <h3 className="font-bold text-lg flex items-center gap-2 text-gray-800"><ClipboardList size={20} className="text-slate-500"/> 상세 거래 내역 <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full text-sm">{itemHistoryData.history.length}건</span></h3>
+                                            </div>
+                                            
+                                            <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                                                <div className="overflow-x-auto max-h-[500px] custom-scroll">
+                                                    <table className="w-full text-left text-sm min-w-[600px]">
+                                                        <thead className="bg-slate-50 text-slate-600 font-bold border-b sticky top-0">
+                                                            <tr><th className="p-4 w-32">날짜</th><th className="p-4 w-24 text-center">구분</th><th className="p-4">상세내용</th><th className="p-4 text-right w-24">수량</th><th className="p-4 w-48">당시 위치/비고</th></tr>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-slate-100">
+                                                            {itemHistoryData.history.length > 0 ? itemHistoryData.history.map((t, idx) => (
+                                                                <tr key={t.id || idx} className="hover:bg-slate-50 transition-colors">
+                                                                    <td className="p-4 text-gray-600 font-medium">{t.date}</td>
+                                                                    <td className="p-4 text-center"><span className={`px-2.5 py-1 rounded-full text-xs font-bold ${t.category === 'inbound' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{t.category === 'inbound' ? '입고' : '출고'}</span></td>
+                                                                    <td className="p-4 font-bold text-gray-700">{t.category === 'inbound' ? t.subType : t.department}</td>
+                                                                    <td className={`p-4 text-right font-extrabold ${t.category === 'inbound' ? 'text-green-600' : 'text-red-600'}`}>{t.category === 'inbound' ? '+' : '-'}{t.quantity}</td>
+                                                                    <td className="p-4 text-gray-500 text-xs">{t.location}</td>
+                                                                </tr>
+                                                            )) : <tr><td colSpan="5" className="p-12 text-center text-gray-400">설정하신 기간에 해당하는 입출고 기록이 없습니다.</td></tr>}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="flex flex-col items-center justify-center p-16 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200">
+                                            <Search className="w-12 h-12 text-slate-300 mb-4" />
+                                            <p className="text-slate-500 font-medium">품목명을 검색하면 요약 정보와 상세 내역이 여기에 표시됩니다.</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'report' && (
+                            <div className="space-y-6">
+                                <div className="flex flex-col xl:flex-row justify-between items-center bg-gray-50 p-4 rounded-xl border border-gray-200 mb-6 gap-4">
+                                    <h2 className="text-xl font-bold flex items-center gap-2 whitespace-nowrap"><FileText className="text-slate-600" /> 월별 재고관리 대장</h2>
+                                    
+                                    {/* 인쇄 설정 (모든 셀 넓이 조정 메뉴) */}
+                                    <div className="flex flex-wrap items-center justify-center gap-2 bg-white p-2 rounded-lg border border-gray-200 shadow-sm text-xs">
+                                        <span className="font-bold text-gray-700 mr-1">⚙️ 넓이(px)</span>
+                                        <div className="flex items-center gap-1">
+                                            <label className="text-gray-600">No:</label>
+                                            <input type="number" value={reportColWidths.no} onChange={e => setReportColWidths({...reportColWidths, no: Number(e.target.value)})} className="w-12 p-1 border rounded text-center outline-none focus:ring-1 focus:ring-blue-500" />
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                            <label className="text-gray-600">품명:</label>
+                                            <input type="number" value={reportColWidths.itemName} onChange={e => setReportColWidths({...reportColWidths, itemName: Number(e.target.value)})} className="w-14 p-1 border rounded text-center outline-none focus:ring-1 focus:ring-blue-500" />
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                            <label className="text-gray-600">숫자:</label>
+                                            <input type="number" value={reportColWidths.numbers} onChange={e => setReportColWidths({...reportColWidths, numbers: Number(e.target.value)})} className="w-12 p-1 border rounded text-center outline-none focus:ring-1 focus:ring-blue-500" />
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                            <label className="text-gray-600">장소:</label>
+                                            <input type="number" value={reportColWidths.location} onChange={e => setReportColWidths({...reportColWidths, location: Number(e.target.value)})} className="w-14 p-1 border rounded text-center outline-none focus:ring-1 focus:ring-blue-500" />
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                            <label className="text-gray-600">부서:</label>
+                                            <input type="number" value={reportColWidths.dept} onChange={e => setReportColWidths({...reportColWidths, dept: Number(e.target.value)})} className="w-12 p-1 border rounded text-center outline-none focus:ring-1 focus:ring-blue-500" />
+                                        </div>
+                                    </div>
+
+                                    <div className="flex flex-wrap gap-2 w-full xl:w-auto">
+                                        <input type="month" value={currentMonth} onChange={e => setCurrentMonth(e.target.value)} className="p-2 border rounded-lg shadow-sm flex-1 xl:flex-none font-medium outline-none focus:ring-2 focus:ring-blue-500" />
+                                        <button onClick={() => handlePrintInNewWindow('printable-report-area', '월별 재고관리 대장')} className="bg-slate-800 text-white px-5 py-2 rounded-lg flex items-center justify-center gap-2 shadow-md hover:bg-slate-700 transition-colors flex-1 xl:flex-none font-bold whitespace-nowrap"><Printer size={18} /> 인쇄하기 (새창)</button>
+                                    </div>
+                                </div>
+                                <div id="printable-report-area">
+                                    {reportPages.map((pageData, pageIndex) => (
+                                        <div key={pageIndex} className={`report-page bg-white p-4 text-black border border-gray-200 rounded-lg shadow-sm ${pageIndex > 0 ? 'page-break pt-16' : ''} relative pb-12`}>
+                                            <div className="relative pt-4 mb-4">
+                                                <div className="absolute top-0 left-0 text-base font-bold">동광복지재단 해뜨는집</div>
+                                                <div className="flex justify-between items-end">
+                                                    <div className="flex-1 text-center">
+                                                        <h1 className="text-2xl font-bold underline underline-offset-8">{currentMonth.split('-')[0]}년 {currentMonth.split('-')[1]}월 소모품 재고관리 대장</h1>
+                                                    </div>
+                                                    
+                                                    {pageIndex === 0 && (
+                                                        <div className="flex border border-black text-center text-sm ml-4"><div className="w-6 bg-gray-100 flex items-center justify-center border-r border-black font-bold leading-tight">결<br/>재</div><div className="flex"><div className="w-20"><div className="bg-gray-100 border-b border-black py-1">담 당</div><div className="h-16"></div></div><div className="w-20 border-l border-black"><div className="bg-gray-100 border-b border-black py-1">국 장</div><div className="h-16"></div></div><div className="w-20 border-l border-black"><div className="bg-gray-100 border-b border-black py-1">원 장</div><div className="h-16"></div></div></div></div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            
+                                            <table className="w-full border-collapse border border-black text-center text-xs md:text-sm mb-4">
+                                                <thead>
+                                                    <tr className="bg-gray-100">
+                                                        <th rowSpan="2" className="border border-black p-1" style={{ width: `${reportColWidths.no}px` }}>No</th>
+                                                        <th rowSpan="2" className="border border-black p-1" style={{ width: `${reportColWidths.itemName}px` }}>품 명</th>
+                                                        <th rowSpan="2" className="border border-black p-1" style={{ width: `${reportColWidths.numbers}px` }}>전월<br/>재고</th>
+                                                        <th rowSpan="2" className="border border-black p-1" style={{ width: `${reportColWidths.numbers}px` }}>현<br/>재고</th>
+                                                        <th colSpan="2" className="border border-black p-1">입고</th>
+                                                        <th rowSpan="2" className="border border-black p-1" style={{ width: `${reportColWidths.numbers}px` }}>총<br/>출고</th>
+                                                        <th rowSpan="2" className="border border-black p-1" style={{ width: `${reportColWidths.location}px` }}>보관장소</th>
+                                                        <th colSpan={DEPARTMENTS.length} className="border border-black p-1">출고 세부 내역</th>
+                                                    </tr>
+                                                    <tr className="bg-gray-100">
+                                                        <th className="border border-black p-1" style={{ width: `${reportColWidths.numbers}px` }}>구입</th>
+                                                        <th className="border border-black p-1" style={{ width: `${reportColWidths.numbers}px` }}>후원</th>
+                                                        {DEPARTMENTS.map(d => <th key={d} className="border border-black p-1" style={{ width: `${reportColWidths.dept}px` }}>{d}</th>)}
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {pageData.map((item, idx) => (
+                                                        <tr key={item.name + idx} className="h-6 text-xs hover:bg-gray-50">
+                                                            <td className="border border-black p-1">{(pageIndex * 33) + idx + 1}</td>
+                                                            <td className="border border-black p-1 text-left px-2 font-medium overflow-hidden text-ellipsis whitespace-nowrap" style={{ maxWidth: `${reportColWidths.itemName}px` }} title={item.name}>{item.name}</td>
+                                                            <td className="border border-black p-1 bg-gray-50">{item.prevStock}</td>
+                                                            <td className="border border-black p-1 font-bold bg-blue-50">{item.currentStock < 0 ? 0 : item.currentStock}</td>
+                                                            <td className="border border-black p-1 text-green-700">{item.inboundPurchase || ''}</td>
+                                                            <td className="border border-black p-1 text-green-700">{item.inboundDonation || ''}</td>
+                                                            <td className="border border-black p-1 bg-red-50 text-red-700 font-medium">{item.totalOutbound || ''}</td>
+                                                            <td className="border border-black p-1 text-[10px] text-gray-600 overflow-hidden text-ellipsis whitespace-nowrap" style={{ maxWidth: `${reportColWidths.location}px` }} title={item.location}>{item.location}</td>
+                                                            {DEPARTMENTS.map(d => (
+                                                                <td key={d} className="border border-black p-1 text-gray-700">{item.outboundByDept[d] > 0 ? item.outboundByDept[d] : ''}</td>
+                                                            ))}
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                            <div className="page-footer text-gray-500 font-medium">- {pageIndex + 1} -</div>
+                                        </div>
+                                    ))}
+                                    {reportPages[0] && reportPages[0].length === 0 && (
+                                        <div className="p-20 text-center text-gray-400 bg-white border border-gray-200 rounded-lg shadow-sm">해당 월에 보고서 데이터가 없습니다.</div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
