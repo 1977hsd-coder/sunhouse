@@ -72,9 +72,14 @@
         const Layers = (p) => <IconBase {...p}><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></IconBase>;
         const History = (p) => <IconBase {...p}><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></IconBase>;
         const ShieldCheck = (p) => <IconBase {...p}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></IconBase>;
+        const Cloud = (p) => <IconBase {...p}><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></IconBase>;
 
         const DEPARTMENTS = ['기린초', '바위솔', '붓꽃', '구절초', '주방', '지원실'];
         const INBOUND_TYPES = ['구입', '후원'];
+
+        // 구글 스프레드시트 연동 설정
+        const SHEET_API_URL = 'https://script.google.com/macros/s/AKfycbwmiCv86g7KKlS6NlYapvyfPuduBaRWBT6bj0tTh3Ln2QcmEJ_Sdwz_G-2Q-QkaY_ihow/exec';
+        const SHEET_TAB_NAME = 'stock';
 
         const formatDateTimeStamp = (dateObj = new Date()) => {
             const pad = (n) => String(n).padStart(2, '0');
@@ -110,11 +115,17 @@
                 });
             };
 
-            const SHEET_API_URL = 'https://script.google.com/macros/s/AKfycbwmiCv86g7KKlS6NlYapvyfPuduBaRWBT6bj0tTh3Ln2QcmEJ_Sdwz_G-2Q-QkaY_ihow/exec';
             const [activeTab, setActiveTab] = useState('dashboard');
             const overwriteInputRef = useRef(null);
             const mergeInputRef = useRef(null);
             const isFirstRender = useRef(true);
+
+            // 구글 시트 동기화 상태 및 제어 Ref
+            const [syncStatus, setSyncStatus] = useState('idle'); // 'idle' | 'loading' | 'saving' | 'synced' | 'error'
+            const [lastSyncedAt, setLastSyncedAt] = useState(null);
+            const isCloudReady = useRef(false);
+            const skipNextCloudSave = useRef(false);
+            const saveTimerRef = useRef(null);
             
             const [transactions, setTransactions] = useState(() => {
                 try { return JSON.parse(localStorage.getItem('consumable_transactions')) || []; } catch { return []; }
@@ -138,6 +149,77 @@
             });
             const [backupModalOpen, setBackupModalOpen] = useState(false);
 
+            // 구글 시트에 데이터 저장 함수 (POST)
+            const pushToGoogleSheet = async (payload, silent = true) => {
+                if (!SHEET_API_URL) return;
+                setSyncStatus('saving');
+                try {
+                    await fetch(SHEET_API_URL, {
+                        method: 'POST',
+                        mode: 'no-cors',
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                        body: JSON.stringify({
+                            sheet: SHEET_TAB_NAME,
+                            data: {
+                                ...payload,
+                                updatedAt: new Date().toISOString()
+                            }
+                        })
+                    });
+                    setSyncStatus('synced');
+                    setLastSyncedAt(new Date().toISOString());
+                    if (!silent) showAlert('구글 시트에 최신 데이터가 저장되었습니다.');
+                } catch (err) {
+                    console.error('구글 시트 저장 오류:', err);
+                    setSyncStatus('error');
+                    if (!silent) showAlert('구글 시트 저장 중 오류가 발생했습니다. 인터넷 연결을 확인해 주세요.');
+                }
+            };
+
+            // 구글 시트에서 데이터 불러오기 함수 (GET)
+            const fetchFromGoogleSheet = async (isManual = false) => {
+                if (!SHEET_API_URL) return;
+                setSyncStatus('loading');
+                try {
+                    const res = await fetch(`${SHEET_API_URL}?sheet=${encodeURIComponent(SHEET_TAB_NAME)}&t=${Date.now()}`, {
+                        method: 'GET'
+                    });
+                    if (!res.ok) throw new Error('네트워크 응답 오류');
+                    const data = await res.json();
+
+                    if (data && Array.isArray(data.transactions)) {
+                        skipNextCloudSave.current = true;
+                        setTransactions(data.transactions);
+                        if (Array.isArray(data.favorites)) setFavorites(data.favorites);
+                        if (Array.isArray(data.purchaseRequests)) setPurchaseRequests(data.purchaseRequests);
+                        if (data.itemLocations && typeof data.itemLocations === 'object') setItemLocations(data.itemLocations);
+                        setSyncStatus('synced');
+                        setLastSyncedAt(new Date().toISOString());
+                        if (isManual) showAlert(`구글 시트에서 최신 데이터를 불러왔습니다. (총 ${data.transactions.length}건)`);
+                    } else {
+                        // 시트가 비어있는 초기 상태이고, 현재 PC에 기존 데이터가 있으면 자동으로 시트에 최초 업로드
+                        if (!isManual && (transactions.length > 0 || favorites.length > 0)) {
+                            await pushToGoogleSheet({ transactions, favorites, purchaseRequests, itemLocations }, true);
+                        } else {
+                            setSyncStatus('synced');
+                            if (isManual) showAlert('구글 시트에 저장된 데이터가 아직 없습니다. [시트 저장]을 눌러 현재 데이터를 올려주세요.');
+                        }
+                    }
+                } catch (err) {
+                    console.error('구글 시트 불러오기 오류:', err);
+                    setSyncStatus('error');
+                    if (isManual) showAlert('구글 시트에서 데이터를 불러오지 못했습니다. (Apps Script 배포 권한이 "모든 사용자"인지 확인해 주세요)');
+                } finally {
+                    isCloudReady.current = true;
+                }
+            };
+
+            // 앱 최초 실행 시 구글 시트에서 최신 데이터 자동 불러오기
+            useEffect(() => {
+                fetchFromGoogleSheet(false);
+            }, []);
+
+            // 로컬 저장소(localStorage) 반영
             useEffect(() => localStorage.setItem('consumable_transactions', JSON.stringify(transactions)), [transactions]);
             useEffect(() => localStorage.setItem('consumable_favorites', JSON.stringify(favorites)), [favorites]);
             useEffect(() => localStorage.setItem('consumable_purchase_requests', JSON.stringify(purchaseRequests)), [purchaseRequests]);
@@ -147,13 +229,28 @@
                 try { localStorage.setItem('consumable_auto_snapshots', JSON.stringify(autoSnapshots)); } catch (e) {}
             }, [autoSnapshots]);
 
-            // 데이터 변경 시 '미백업 변경 있음' 표시
+            // 데이터 변경 시 '미백업 변경 있음' 표시 + 구글 시트 자동 저장 (0.8초 디바운스)
             useEffect(() => {
                 if (isFirstRender.current) {
                     isFirstRender.current = false;
                     return;
                 }
                 setBackupMeta(prev => (prev.dirty ? prev : { ...prev, dirty: true }));
+
+                if (!isCloudReady.current) return;
+                if (skipNextCloudSave.current) {
+                    skipNextCloudSave.current = false;
+                    return;
+                }
+
+                if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+                saveTimerRef.current = setTimeout(() => {
+                    pushToGoogleSheet({ transactions, favorites, purchaseRequests, itemLocations }, true);
+                }, 800);
+
+                return () => {
+                    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+                };
             }, [transactions, favorites, purchaseRequests, itemLocations]);
 
             // 자동 안전 스냅샷 저장 (최근 5개 유지)
@@ -737,7 +834,6 @@
 
                                 saveAutoSnapshot('누적 병합 전 자동 백업');
 
-                                // 입출고 기록 중복 체크 및 병합
                                 const existingIds = new Set(transactions.map(t => t && t.id).filter(id => id !== undefined && id !== null));
                                 const existingSigs = new Set(transactions.map(t => `${t.date}|${t.category}|${t.subType || ''}|${t.department || ''}|${t.itemName}|${t.quantity}`));
                                 
@@ -760,13 +856,10 @@
                                     }
                                 });
 
-                                // 날짜순 정렬
                                 mergedTx.sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
 
-                                // 즐겨찾기 병합
                                 const mergedFavorites = Array.from(new Set([...favorites, ...(Array.isArray(data.favorites) ? data.favorites : [])]));
 
-                                // 구매 신청 병합
                                 const existingReqIds = new Set(purchaseRequests.map(r => r && r.id));
                                 const mergedRequests = [...purchaseRequests];
                                 (Array.isArray(data.purchaseRequests) ? data.purchaseRequests : []).forEach(r => {
@@ -776,7 +869,6 @@
                                     }
                                 });
 
-                                // 보관 위치 병합 (현재 설정 우선 유지, 없는 품목만 백업에서 추가)
                                 const mergedLocations = { ...(data.itemLocations || {}), ...itemLocations };
 
                                 setTransactions(mergedTx);
@@ -931,12 +1023,12 @@
                                             <div className="text-sm font-bold text-slate-700 mt-2">{cumulativePeriod}</div>
                                         </div>
                                         <div>
-                                            <div className="text-xs text-gray-500 font-medium">마지막 백업 일시</div>
-                                            <div className={`text-sm font-bold mt-2 ${backupMeta.dirty ? 'text-amber-600' : 'text-green-600'}`}>
-                                                {formatDisplayTime(backupMeta.lastBackupAt)}
+                                            <div className="text-xs text-gray-500 font-medium">구글 시트 동기화</div>
+                                            <div className={`text-sm font-bold mt-2 ${syncStatus === 'error' ? 'text-red-600' : 'text-emerald-600'}`}>
+                                                {lastSyncedAt ? formatDisplayTime(lastSyncedAt).slice(5) : '대기 중'}
                                             </div>
-                                            <div className="text-[11px] mt-0.5">
-                                                {backupMeta.dirty ? <span className="text-amber-600 font-semibold">● 미백업 변경사항 있음</span> : <span className="text-green-600">✓ 최신 상태 백업됨</span>}
+                                            <div className="text-[11px] mt-0.5 text-gray-500">
+                                                시트 탭: <b>{SHEET_TAB_NAME}</b>
                                             </div>
                                         </div>
                                     </div>
@@ -1004,7 +1096,7 @@
                                     </div>
 
                                     <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800 leading-relaxed">
-                                        💡 <b>누적 보관 팁:</b> 백업 파일명에는 날짜와 시간이 자동으로 붙으므로, 다운로드한 파일을 PC의 <b>구글 드라이브 / 원드라이브 폴더</b>에 모아두시면 날짜별로 누적 보관되며 다른 PC에서도 <b>[누적 병합]</b>으로 안전하게 이어서 작업할 수 있습니다.
+                                        💡 <b>자동 동기화 안내:</b> 입력·수정·복원된 내용은 자동으로 구글 스프레드시트(<b>{SHEET_TAB_NAME}</b> 탭)에 저장되어 PC와 스마트폰에서 함께 조회할 수 있습니다.
                                     </div>
                                 </div>
                             </div>
@@ -1092,19 +1184,37 @@
                             <div className="flex flex-wrap items-center justify-center md:justify-start gap-2 mt-1.5">
                                 <span className="text-gray-500 text-sm">부서별 입출고 및 재고 통합 관리</span>
                                 <span className="text-gray-300">|</span>
-                                {backupMeta.dirty ? (
-                                    <button onClick={() => setBackupModalOpen(true)} className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 hover:bg-amber-200 transition-colors">
-                                        ● 백업 필요 (누적 {transactions.length}건)
-                                    </button>
-                                ) : (
-                                    <button onClick={() => setBackupModalOpen(true)} className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors">
-                                        <ShieldCheck size={13}/> {backupMeta.lastBackupAt ? `백업됨 (${formatDisplayTime(backupMeta.lastBackupAt).slice(5)})` : `누적 ${transactions.length}건`}
-                                    </button>
-                                )}
+                                {/* 구글 시트 실시간 동기화 상태 배지 (클릭 시 새로고침) */}
+                                <button
+                                    onClick={() => fetchFromGoogleSheet(true)}
+                                    title="클릭하면 구글 시트에서 최신 데이터를 다시 불러옵니다"
+                                    className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold transition-colors ${
+                                        syncStatus === 'loading' || syncStatus === 'saving'
+                                            ? 'bg-blue-100 text-blue-700'
+                                            : syncStatus === 'error'
+                                            ? 'bg-red-100 text-red-700 hover:bg-red-200'
+                                            : 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
+                                    }`}
+                                >
+                                    <Cloud size={13} />
+                                    {syncStatus === 'loading' && '시트 불러오는 중...'}
+                                    {syncStatus === 'saving' && '시트 저장 중...'}
+                                    {syncStatus === 'error' && '시트 연결 확인 (클릭 재시도)'}
+                                    {(syncStatus === 'synced' || syncStatus === 'idle') && (
+                                        lastSyncedAt ? `시트 동기화됨 (${formatDisplayTime(lastSyncedAt).slice(11)})` : '구글 시트 연결됨'
+                                    )}
+                                </button>
                             </div>
                         </div>
                         <div className="flex flex-wrap gap-2 justify-center md:justify-end">
                             <div className="bg-blue-50 text-blue-700 px-3 py-2 rounded-lg text-sm font-medium">품목 {inventory.length}개</div>
+                            <button
+                                onClick={() => pushToGoogleSheet({ transactions, favorites, purchaseRequests, itemLocations }, false)}
+                                className="bg-emerald-600 text-white hover:bg-emerald-700 px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-1.5 shadow-sm transition-colors"
+                                title="현재 화면의 데이터를 구글 시트에 즉시 저장합니다"
+                            >
+                                <Cloud size={16} /> 시트 저장
+                            </button>
                             <button onClick={handleSortAndRecalculate} className="bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-1 shadow-sm"><RefreshCw size={16} /> 정렬/재계산</button>
                             <button onClick={() => setBackupModalOpen(true)} className="bg-indigo-600 text-white hover:bg-indigo-700 px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-1.5 shadow-sm transition-colors">
                                 <Database size={16} /> 누적 백업/병합
