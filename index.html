@@ -1,173 +1,269 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>동광복지재단 해뜨는집 - 통합 관리 시스템</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;800&display=swap" rel="stylesheet">
-    <style>
-        body {
-            font-family: 'Noto Sans KR', 'Malgun Gothic', sans-serif;
-        }
-        .card-hover {
-            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-        .card-hover:hover {
-            transform: translateY(-6px);
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>동광복지재단 해뜨는집 | 통합 관리 시스템</title>
+  <style>
+    :root {
+      --bg: #f4f7fb;
+      --card: #ffffff;
+      --text: #1e293b;
+      --muted: #64748b;
+      --border: #e2e8f0;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --green: #059669;
+      --purple: #7c3aed;
+      --shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.08), 0 4px 10px -2px rgba(15, 23, 42, 0.04);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: "Pretendard", "Malgun Gothic", -apple-system, BlinkMacSystemFont, sans-serif;
+      background: linear-gradient(180deg, #eef4ff 0%, var(--bg) 220px);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      max-width: 1040px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 40px 24px 20px;
+    }
+
+    .badge {
+      display: inline-block;
+      background: #dbeafe;
+      color: #1e40af;
+      font-size: 13px;
+      font-weight: 700;
+      padding: 6px 12px;
+      border-radius: 999px;
+      margin-bottom: 14px;
+    }
+
+    h1 {
+      font-size: 30px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: #0f172a;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      font-size: 15px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    main {
+      max-width: 1040px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 16px 24px 48px;
+      flex: 1;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 22px;
+      margin-top: 12px;
+    }
+
+    .menu-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 26px;
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+      text-decoration: none;
+      color: inherit;
+    }
+
+    .menu-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 18px 32px -8px rgba(15, 23, 42, 0.12);
+      border-color: #93c5fd;
+    }
+
+    .icon-box {
+      width: 52px;
+      height: 52px;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 26px;
+      margin-bottom: 18px;
+    }
+
+    .icon-stock { background: #eff6ff; }
+    .icon-book { background: #ecfdf5; }
+    .icon-waitlist { background: #f5f3ff; }
+
+    .card-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: #0f172a;
+      margin-bottom: 8px;
+    }
+
+    .card-desc {
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.6;
+      margin-bottom: 20px;
+    }
+
+    .card-meta {
+      font-size: 12px;
+      color: #475569;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 10px 12px;
+      margin-bottom: 18px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      padding: 12px 16px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 700;
+      color: #ffffff;
+      background: var(--primary);
+      transition: background 0.15s ease;
+    }
+
+    .menu-card:hover .btn-stock { background: var(--primary-hover); }
+    .btn-book { background: var(--green); }
+    .menu-card:hover .btn-book { background: #047857; }
+    .btn-waitlist { background: var(--purple); }
+    .menu-card:hover .btn-waitlist { background: #6d28d9; }
+
+    .notice-box {
+      margin-top: 28px;
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-left: 4px solid var(--primary);
+      border-radius: 14px;
+      padding: 18px 20px;
+      font-size: 13.5px;
+      color: #334155;
+      line-height: 1.65;
+    }
+
+    .notice-box strong {
+      color: #0f172a;
+    }
+
+    footer {
+      max-width: 1040px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 0 24px 32px;
+      font-size: 12.5px;
+      color: var(--muted);
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    code {
+      background: #f1f5f9;
+      padding: 2px 6px;
+      border-radius: 6px;
+      font-size: 12px;
+      color: #0f172a;
+    }
+  </style>
 </head>
-<body class="min-h-screen bg-gradient-to-br from-slate-100 via-blue-50/40 to-slate-200 text-slate-800 flex flex-col justify-between">
+<body>
+  <header>
+    <div class="badge">사회복지법인 동광복지재단 · 해뜨는집</div>
+    <h1>통합 관리 시스템 포털</h1>
+    <p class="subtitle">
+      업무에 필요한 관리 프로그램을 선택해 주세요. 각 프로그램의 데이터는 브라우저 저장소(<code>localStorage</code>)를 기반으로 동작하며, 정기적으로 JSON/CSV 파일로 백업해 보관하시기 바랍니다.
+    </p>
+  </header>
 
-    <!-- 상단 헤더 -->
-    <header class="w-full bg-white/80 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-10">
-        <div class="max-w-5xl mx-auto px-6 py-4 flex flex-col sm:flex-row justify-between items-center gap-2">
-            <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-md shadow-blue-600/20 font-extrabold text-lg">
-                    해
-                </div>
-                <div>
-                    <span class="text-xs font-bold text-blue-600 tracking-wider block">DONGKWANG WELFARE FOUNDATION</span>
-                    <h1 class="text-lg sm:text-xl font-extrabold text-slate-900 leading-tight">동광복지재단 해뜨는집 통합 관리 시스템</h1>
-                </div>
-            </div>
-            <div id="current-date" class="text-xs sm:text-sm font-medium text-slate-500 bg-slate-100 px-3.5 py-1.5 rounded-full">
-                날짜 불러오는 중...
-            </div>
+  <main>
+    <div class="grid">
+      <!-- 1. 소모품 관리 -->
+      <a class="menu-card" href="./consumables/">
+        <div>
+          <div class="icon-box icon-stock">📦</div>
+          <div class="card-title">소모품 관리대장</div>
+          <p class="card-desc">
+            품목별 입출고 내역, 재고 현황, 구매 필요 품목 확인 및 보고서 인쇄 기능을 제공합니다.
+          </p>
+          <div class="card-meta">
+            경로: <code>/consumables/index.html</code> · 누적 백업/병합 지원
+          </div>
         </div>
-    </header>
+        <div class="btn btn-stock">소모품 관리 열기 →</div>
+      </a>
 
-    <!-- 메인 컨텐츠 영역 -->
-    <main class="max-w-5xl w-full mx-auto px-6 py-12 flex-1 flex flex-col justify-center">
-        
-        <!-- 안내 타이틀 -->
-        <div class="text-center mb-10">
-            <span class="inline-block px-3 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-bold mb-3">
-                SUNHOUSE PORTAL
-            </span>
-            <h2 class="text-2xl sm:text-3xl font-extrabold text-slate-900 mb-2">
-                업무 프로그램을 선택해 주세요
-            </h2>
-            <p class="text-sm sm:text-base text-slate-500">
-                아래 카드를 클릭하면 해당 관리 대장 프로그램으로 바로 이동합니다.
-            </p>
+      <!-- 2. 도서 관리 -->
+      <a class="menu-card" href="./book/">
+        <div>
+          <div class="icon-box icon-book">📚</div>
+          <div class="card-title">도서 관리</div>
+          <p class="card-desc">
+            보유 도서 목록, 대출·반납 현황 및 도서 자료 관리를 위한 공간입니다.
+          </p>
+          <div class="card-meta">
+            경로: <code>/book/index.html</code> · 준비·연결용 경로
+          </div>
         </div>
+        <div class="btn btn-book">도서 관리 열기 →</div>
+      </a>
 
-        <!-- 프로그램 선택 카드 (2열 배치) -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8 max-w-4xl mx-auto w-full">
-
-            <!-- 1. 소모품 관리 카드 -->
-            <a href="./stock/" class="card-hover group bg-white rounded-2xl p-7 sm:p-8 shadow-sm hover:shadow-xl border border-slate-200/90 hover:border-blue-400 flex flex-col justify-between relative overflow-hidden">
-                <!-- 배경 장식 원 -->
-                <div class="absolute -right-8 -top-8 w-32 h-32 rounded-full bg-blue-50 group-hover:bg-blue-100/80 transition-colors"></div>
-                
-                <div class="relative z-10">
-                    <div class="flex items-center justify-between mb-6">
-                        <div class="w-14 h-14 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-lg shadow-blue-600/25 group-hover:scale-105 transition-transform">
-                            <!-- 상자 아이콘 -->
-                            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M16.5 9.4 7.55 4.24"/>
-                                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
-                                <polyline points="3.29 7 12 12 20.71 7"/>
-                                <line x1="12" y1="22" x2="12" y2="12"/>
-                            </svg>
-                        </div>
-                        <span class="px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            운영중
-                        </span>
-                    </div>
-
-                    <h3 class="text-xl sm:text-2xl font-extrabold text-slate-900 group-hover:text-blue-600 transition-colors mb-2">
-                        소모품 관리대장
-                    </h3>
-                    <p class="text-sm text-slate-500 leading-relaxed mb-6">
-                        부서별 소모품 입·출고 등록, 실시간 재고 파악, 구매 필요 목록 확인 및 월별 재고관리 대장 인쇄를 지원합니다.
-                    </p>
-                </div>
-
-                <div class="relative z-10 pt-4 border-t border-slate-100 flex items-center justify-between text-sm font-bold text-blue-600">
-                    <span>프로그램 열기</span>
-                    <span class="w-8 h-8 rounded-full bg-blue-50 group-hover:bg-blue-600 group-hover:text-white flex items-center justify-center transition-colors">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
-                        </svg>
-                    </span>
-                </div>
-            </a>
-
-            <!-- 2. 도서 관리 카드 -->
-            <a href="./book/" class="card-hover group bg-white rounded-2xl p-7 sm:p-8 shadow-sm hover:shadow-xl border border-slate-200/90 hover:border-emerald-400 flex flex-col justify-between relative overflow-hidden">
-                <!-- 배경 장식 원 -->
-                <div class="absolute -right-8 -top-8 w-32 h-32 rounded-full bg-emerald-50 group-hover:bg-emerald-100/80 transition-colors"></div>
-                
-                <div class="relative z-10">
-                    <div class="flex items-center justify-between mb-6">
-                        <div class="w-14 h-14 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shadow-lg shadow-emerald-600/25 group-hover:scale-105 transition-transform">
-                            <!-- 책 아이콘 -->
-                            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/>
-                                <path d="M8 7h6"/>
-                                <path d="M8 11h8"/>
-                            </svg>
-                        </div>
-                        <span class="px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            도서 시스템
-                        </span>
-                    </div>
-
-                    <h3 class="text-xl sm:text-2xl font-extrabold text-slate-900 group-hover:text-emerald-600 transition-colors mb-2">
-                        도서 관리대장
-                    </h3>
-                    <p class="text-sm text-slate-500 leading-relaxed mb-6">
-                        보유 도서 목록 관리, 신규 도서 등록, 도서 대출·반납 현황 및 비치 내역을 간편하게 관리합니다.
-                    </p>
-                </div>
-
-                <div class="relative z-10 pt-4 border-t border-slate-100 flex items-center justify-between text-sm font-bold text-emerald-600">
-                    <span>프로그램 열기</span>
-                    <span class="w-8 h-8 rounded-full bg-emerald-50 group-hover:bg-emerald-600 group-hover:text-white flex items-center justify-center transition-colors">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
-                        </svg>
-                    </span>
-                </div>
-            </a>
-
+      <!-- 3. 대기자 관리 -->
+      <a class="menu-card" href="./waitlist/">
+        <div>
+          <div class="icon-box icon-waitlist">📝</div>
+          <div class="card-title">대기자 관리</div>
+          <p class="card-desc">
+            입소·이용 대기자 명단, 접수일·상담 이력 및 대기 순번 현황을 체계적으로 관리합니다.
+          </p>
+          <div class="card-meta">
+            경로: <code>/waitlist/index.html</code> · 준비·연결용 경로
+          </div>
         </div>
+        <div class="btn btn-waitlist">대기자 관리 열기 →</div>
+      </a>
+    </div>
 
-        <!-- 하단 안내 메모 -->
-        <div class="max-w-4xl mx-auto w-full mt-8 bg-white/70 border border-slate-200/80 rounded-xl p-4 flex items-start sm:items-center gap-3 text-xs sm:text-sm text-slate-600">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-blue-600 shrink-0 mt-0.5 sm:mt-0">
-                <circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>
-            </svg>
-            <span>
-                각 프로그램의 데이터는 브라우저에 안전하게 누적 저장되며, 프로그램 상단의 <b>[누적 백업/병합]</b> 기능을 통해 정기적으로 백업 파일을 보관해 주세요.
-            </span>
-        </div>
-    </main>
+    <div class="notice-box">
+      <strong>💡 폴더 및 백업 운영 안내</strong><br />
+      · 저장소 구조는 <code>index.html</code>(메인), <code>consumables/index.html</code>(소모품), <code>book/index.html</code>(도서), <code>waitlist/index.html</code>(대기자) 형태로 맞춰 주세요.<br />
+      · 개인정보 및 업무 데이터가 담긴 <code>.json</code> 백업 파일은 GitHub 저장소에 올리지 마시고 PC 또는 구글 드라이브 등 별도 백업 폴더에 안전하게 보관해 주세요.
+    </div>
+  </main>
 
-    <!-- 하단 푸터 -->
-    <footer class="w-full py-5 text-center text-xs text-slate-400 border-t border-slate-200/60 bg-white/40">
-        © 동광복지재단 해뜨는집 (Sunhouse) 통합 관리 포털
-    </footer>
-
-    <script>
-        // 오늘 날짜 및 요일 자동 표시
-        function updateDateDisplay() {
-            const now = new Date();
-            const days = ['일', '월', '화', '수', '목', '금', '토'];
-            const year = now.getFullYear();
-            const month = String(now.getMonth() + 1).padStart(2, '0');
-            const date = String(now.getDate()).padStart(2, '0');
-            const day = days[now.getDay()];
-            
-            const el = document.getElementById('current-date');
-            if (el) {
-                el.textContent = `${year}년 ${month}월 ${date}일 (${day})`;
-            }
-        }
-        updateDateDisplay();
-    </script>
+  <footer>
+    <span>동광복지재단 해뜨는집 통합 관리 포털</span>
+    <span>폴더 구조: <code>/</code> · <code>/consumables/</code> · <code>/book/</code> · <code>/waitlist/</code></span>
+  </footer>
 </body>
 </html>
