@@ -15,6 +15,7 @@
       --primary-hover: #1d4ed8;
       --green: #059669;
       --purple: #7c3aed;
+      --amber: #d97706;
       --shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.08), 0 4px 10px -2px rgba(15, 23, 42, 0.04);
     }
 
@@ -75,7 +76,7 @@
 
     .grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
       gap: 22px;
       margin-top: 12px;
     }
@@ -114,6 +115,7 @@
     .icon-stock { background: #eff6ff; }
     .icon-book { background: #ecfdf5; }
     .icon-waitlist { background: #f5f3ff; }
+    .icon-cash { background: #fffbeb; }
 
     .card-title {
       font-size: 20px;
@@ -158,6 +160,8 @@
     .menu-card:hover .btn-book { background: #047857; }
     .btn-waitlist { background: var(--purple); }
     .menu-card:hover .btn-waitlist { background: #6d28d9; }
+    .btn-cash { background: var(--amber); }
+    .menu-card:hover .btn-cash { background: #b45309; }
 
     .notice-box {
       margin-top: 28px;
@@ -252,18 +256,33 @@
         </div>
         <div class="btn btn-waitlist">대기자 관리 열기 →</div>
       </a>
+
+      <!-- 4. 금전출납 관리 -->
+      <a class="menu-card" href="./cash/">
+        <div>
+          <div class="icon-box icon-cash">💰</div>
+          <div class="card-title">금전출납 관리</div>
+          <p class="card-desc">
+            수입·지출 내역 기록, 일별·월별 잔액 자동 계산 및 출납부 인쇄·백업 기능을 제공합니다.
+          </p>
+          <div class="card-meta">
+            경로: <code>/cash/index.html</code> · 준비·연결용 경로
+          </div>
+        </div>
+        <div class="btn btn-cash">금전출납 관리 열기 →</div>
+      </a>
     </div>
 
     <div class="notice-box">
       <strong>💡 폴더 및 백업 운영 안내</strong><br />
-      · 저장소 구조는 <code>index.html</code>(메인), <code>consumables/index.html</code>(소모품), <code>book/index.html</code>(도서), <code>waitlist/index.html</code>(대기자) 형태로 맞춰 주세요.<br />
+      · 저장소 구조는 <code>index.html</code>(메인), <code>consumables/index.html</code>(소모품), <code>book/index.html</code>(도서), <code>waitlist/index.html</code>(대기자), <code>cash/index.html</code>(금전출납) 형태로 맞춰 주세요.<br />
       · 개인정보 및 업무 데이터가 담긴 <code>.json</code> 백업 파일은 GitHub 저장소에 올리지 마시고 PC 또는 구글 드라이브 등 별도 백업 폴더에 안전하게 보관해 주세요.
     </div>
   </main>
 
   <footer>
     <span>동광복지재단 해뜨는집 통합 관리 포털</span>
-    <span>폴더 구조: <code>/</code> · <code>/consumables/</code> · <code>/book/</code> · <code>/waitlist/</code></span>
+    <span>폴더 구조: <code>/</code> · <code>/consumables/</code> · <code>/book/</code> · <code>/waitlist/</code> · <code>/cash/</code></span>
   </footer>
 </body>
 </html>

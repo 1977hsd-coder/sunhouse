@@ -1,0 +1,1753 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>동광복지재단 금전출납부</title>
+
+    <!-- React & ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+
+    <!-- Babel (for JSX) -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <style>
+        @media print {
+            @page {
+                size: A4 landscape;
+                margin: 0;
+            }
+            html, body {
+                margin: 0 !important;
+                padding: 0 !important;
+                background: white !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+            .no-print { display: none !important; }
+
+            /* 인쇄 페이지 컨테이너 - A4 가로 높이(210mm)보다 여유 있게 설정하여 빈 페이지 방지 */
+            .print-page {
+                width: 297mm;
+                height: 202mm;
+                padding: 10mm;
+                margin: 0;
+                page-break-after: always;
+                break-after: page;
+                page-break-inside: avoid;
+                break-inside: avoid;
+                position: relative;
+                box-sizing: border-box;
+                overflow: hidden;
+            }
+
+            /* 마지막 페이지는 다음 장으로 넘기지 않음 */
+            .print-page:last-child,
+            .print-page.last-page {
+                page-break-after: auto !important;
+                break-after: auto !important;
+            }
+        }
+
+        /* 화면 미리보기용 스타일 */
+        .preview-container {
+            background-color: #525659;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .preview-container .print-page {
+            width: 297mm;
+            height: 202mm;
+            padding: 10mm;
+            background: white;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+            box-sizing: border-box;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* 모달 애니메이션 */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        .animate-in {
+            animation: fadeIn 0.2s ease-out forwards;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-900 font-sans">
+    <div id="root"></div>
+
+    <!-- 실행 오류 감지 영역 -->
+    <div id="error-message" style="display:none; padding: 20px; color: red; background: #ffe6e6; border: 1px solid red; margin: 20px; border-radius: 8px;">
+        <h3 style="font-weight: bold; margin-bottom: 8px;">프로그램 실행 중 오류가 발생했습니다.</h3>
+        <pre id="error-detail" style="white-space: pre-wrap; font-size: 13px;"></pre>
+    </div>
+
+    <script>
+        window.onerror = function(message, source, lineno, colno, error) {
+            var el = document.getElementById('error-message');
+            var detail = document.getElementById('error-detail');
+            if (el && detail) {
+                el.style.display = 'block';
+                detail.textContent = message + '\n라인: ' + lineno;
+            }
+        };
+    </script>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo, useRef } = React;
+
+        // --- GOOGLE SHEETS CONFIG ---
+        const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwmiCv86g7KKlS6NlYapvyfPuduBaRWBT6bj0tTh3Ln2QcmEJ_Sdwz_G-2Q-QkaY_ihow/exec";
+        const GOOGLE_SHEET_NAME = "cash";
+
+        // --- INLINE SVG ICONS (외부 아이콘 CDN 오류 방지) ---
+        const IconBase = ({ children, size = 24, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                {children}
+            </svg>
+        );
+
+        const Icons = {
+            UserPlus: (props) => <IconBase {...props}><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></IconBase>,
+            Wallet: (props) => <IconBase {...props}><path d="M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4"/><path d="M4 6v12c0 1.1.9 2 2 2h14v-4"/><path d="M18 12a2 2 0 0 0-2 2c0 1.1.9 2 2 2h4v-4h-4z"/></IconBase>,
+            Receipt: (props) => <IconBase {...props}><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1-2-1z"/><line x1="16" y1="8" x2="8" y2="8"/><line x1="16" y1="12" x2="8" y2="12"/><line x1="16" y1="16" x2="8" y2="16"/></IconBase>,
+            Printer: (props) => <IconBase {...props}><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></IconBase>,
+            Users: (props) => <IconBase {...props}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></IconBase>,
+            Check: (props) => <IconBase {...props}><polyline points="20 6 9 17 4 12"/></IconBase>,
+            X: (props) => <IconBase {...props}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></IconBase>,
+            Calendar: (props) => <IconBase {...props}><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></IconBase>,
+            Trash2: (props) => <IconBase {...props}><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></IconBase>,
+            Eye: (props) => <IconBase {...props}><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></IconBase>,
+            Edit2: (props) => <IconBase {...props}><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></IconBase>,
+            AlertCircle: (props) => <IconBase {...props}><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></IconBase>,
+            Download: (props) => <IconBase {...props}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></IconBase>,
+            Upload: (props) => <IconBase {...props}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></IconBase>,
+            Maximize: (props) => <IconBase {...props}><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></IconBase>,
+            Power: (props) => <IconBase {...props}><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></IconBase>,
+            CreditCard: (props) => <IconBase {...props}><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></IconBase>,
+            Banknote: (props) => <IconBase {...props}><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></IconBase>,
+            Cloud: (props) => <IconBase {...props}><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></IconBase>,
+        };
+
+        const {
+            UserPlus, Wallet, Receipt, Printer, Users, Check, X,
+            Calendar, Trash2, Eye, Edit2, AlertCircle,
+            Download, Upload, Maximize, Power, CreditCard, Banknote, Cloud
+        } = Icons;
+
+        // --- UI COMPONENTS ---
+
+        const Button = ({ children, onClick, variant = 'primary', className = '', disabled = false, title = '', type = 'button' }) => {
+            const baseStyle = "px-4 py-2 rounded-lg font-medium transition-colors duration-200 flex items-center justify-center gap-2";
+            const variants = {
+                primary: "bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-300",
+                secondary: "bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:bg-gray-50",
+                danger: "bg-red-100 text-red-600 hover:bg-red-200",
+                outline: "border border-gray-300 text-gray-700 hover:bg-gray-50",
+                icon: "p-2 rounded-full hover:bg-gray-100 text-gray-600 transition-colors"
+            };
+            return (
+                <button type={type} onClick={onClick} disabled={disabled} title={title} className={`${baseStyle} ${variants[variant]} ${className}`}>
+                    {children}
+                </button>
+            );
+        };
+
+        const Card = ({ title, children, className = '' }) => (
+            <div className={`bg-white rounded-xl shadow-sm border border-gray-100 p-6 ${className}`}>
+                {title && <h2 className="text-xl font-bold text-gray-800 mb-4">{title}</h2>}
+                {children}
+            </div>
+        );
+
+        const Input = ({ label, type = "text", value, onChange, placeholder, min, max, lang = "ko", style = { imeMode: 'active' } }) => (
+            <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+                <input
+                    type={type}
+                    value={value}
+                    onChange={onChange}
+                    placeholder={placeholder}
+                    min={min}
+                    max={max}
+                    lang={lang}
+                    style={style}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                />
+            </div>
+        );
+
+        // --- PRINT DOCUMENT (MULTI-PAGE LAYOUT, NO BLANK PAGES) ---
+        const PrintableDocument = ({ startDate, endDate, filterUser, targetName, stats, transactions, formatCurrency, openingBalance }) => {
+            // 누적 잔액 계산
+            const processRunningBalance = (txList, initialBalance) => {
+                let currentBalance = initialBalance;
+                return txList.map(t => {
+                    const amount = filterUser === 'all' ? (t.type === 'income' ? t.amount : t.totalAmount) : t.amount;
+                    if (t.type === 'income') {
+                        currentBalance += amount;
+                        return { ...t, displayIncome: amount, displayExpense: 0, balance: currentBalance };
+                    } else {
+                        currentBalance -= amount;
+                        return { ...t, displayIncome: 0, displayExpense: amount, balance: currentBalance };
+                    }
+                });
+            };
+
+            const bankTx = transactions.filter(t => (t.method || 'bank') === 'bank');
+            const cashTx = transactions.filter(t => (t.method || 'bank') === 'cash');
+
+            const bankRowsAll = processRunningBalance(bankTx, openingBalance.bank);
+            const cashRowsAll = processRunningBalance(cashTx, openingBalance.cash);
+
+            // 페이지 분할 설정 (1페이지: 8줄, 2페이지 이후: 20줄)
+            const ROWS_PER_FIRST_PAGE = 8;
+            const ROWS_PER_NEXT_PAGE = 20;
+
+            const totalItems = Math.max(bankRowsAll.length, cashRowsAll.length);
+            const pages = [];
+
+            // 1페이지는 항상 생성
+            pages.push({
+                isFirst: true,
+                bank: bankRowsAll.slice(0, ROWS_PER_FIRST_PAGE),
+                cash: cashRowsAll.slice(0, ROWS_PER_FIRST_PAGE),
+            });
+
+            // 남은 내역이 있을 때만 추가 페이지 생성 (빈 페이지 방지)
+            let currentIndex = ROWS_PER_FIRST_PAGE;
+            while (currentIndex < totalItems) {
+                pages.push({
+                    isFirst: false,
+                    bank: bankRowsAll.slice(currentIndex, currentIndex + ROWS_PER_NEXT_PAGE),
+                    cash: cashRowsAll.slice(currentIndex, currentIndex + ROWS_PER_NEXT_PAGE),
+                });
+                currentIndex += ROWS_PER_NEXT_PAGE;
+            }
+
+            return (
+                <div className="w-full text-black print:p-0">
+                    {pages.map((page, pageIndex) => (
+                        <div
+                            key={pageIndex}
+                            className={`print-page bg-white flex flex-col justify-between relative ${pageIndex === pages.length - 1 ? 'last-page' : ''}`}
+                        >
+                            <div>
+                                {/* 상단 제목 및 기간 */}
+                                <div className="flex justify-between items-end mb-4 border-b-2 border-gray-800 pb-2">
+                                    <div>
+                                        <h1 className="text-2xl font-bold text-gray-900 mb-1">
+                                            동광복지재단 금전출납부 {page.isFirst ? '' : '(계속)'}
+                                        </h1>
+                                        {page.isFirst && <p className="text-gray-500 text-xs">동광복지재단 자금 관리 내역서</p>}
+                                    </div>
+                                    <div className="text-right text-gray-700 text-sm">
+                                        <div className="font-semibold">기간: {startDate} ~ {endDate}</div>
+                                        <div>조회 구분: {targetName}</div>
+                                    </div>
+                                </div>
+
+                                {/* 1페이지 전용: 총수입/총지출/현재잔액(좌) + 결재란(우) */}
+                                {page.isFirst && (
+                                    <div className="flex gap-4 mb-5">
+                                        <div className="flex-1 border border-gray-400 flex h-20">
+                                            <div className="flex-1 p-2 text-center border-r border-gray-400 flex flex-col justify-center">
+                                                <div className="text-xs text-gray-500 mb-1">총 수입</div>
+                                                <div className="text-lg font-bold text-green-700">{formatCurrency(stats.totalIncome)}</div>
+                                            </div>
+                                            <div className="flex-1 p-2 text-center border-r border-gray-400 flex flex-col justify-center">
+                                                <div className="text-xs text-gray-500 mb-1">총 지출</div>
+                                                <div className="text-lg font-bold text-red-700">{formatCurrency(stats.totalExpense)}</div>
+                                            </div>
+                                            <div className="flex-1 p-2 text-center bg-gray-50 flex flex-col justify-center">
+                                                <div className="text-xs text-gray-500 mb-1">현재 잔액</div>
+                                                <div className="text-xl font-bold text-gray-900">{formatCurrency(stats.totalBalance)}</div>
+                                            </div>
+                                        </div>
+
+                                        <div className="w-[300px] border border-gray-400 flex text-center text-xs select-none h-20">
+                                            <div className="flex flex-col flex-1 border-r border-gray-400">
+                                                <div className="bg-gray-100 py-1 border-b border-gray-400 font-semibold">담당</div>
+                                                <div className="flex-1"></div>
+                                            </div>
+                                            <div className="flex flex-col flex-1 border-r border-gray-400">
+                                                <div className="bg-gray-100 py-1 border-b border-gray-400 font-semibold">원장</div>
+                                                <div className="flex-1"></div>
+                                            </div>
+                                            <div className="flex flex-col flex-1">
+                                                <div className="bg-gray-100 py-1 border-b border-gray-400 font-semibold">보호자</div>
+                                                <div className="flex-1"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* 좌우 분할 거래 테이블 (통장 / 현금) */}
+                                <div className="flex gap-4 items-start">
+                                    {/* 통장 거래 */}
+                                    <div className="flex-1">
+                                        <h3 className="font-bold text-sm text-blue-700 mb-1 border-b border-blue-700 pb-0.5">통장 거래</h3>
+                                        <table className="w-full text-[11px] text-left border-collapse border border-gray-300">
+                                            <thead>
+                                                <tr className="bg-blue-50 text-center">
+                                                    <th className="p-1 border border-gray-300 w-14">날짜</th>
+                                                    <th className="p-1 border border-gray-300">내역</th>
+                                                    <th className="p-1 border border-gray-300 w-16">수입</th>
+                                                    <th className="p-1 border border-gray-300 w-16">지출</th>
+                                                    <th className="p-1 border border-gray-300 w-20">잔액</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {page.isFirst && (
+                                                    <tr className="bg-gray-50 text-gray-500 italic">
+                                                        <td className="p-1 border border-gray-300 text-center">-</td>
+                                                        <td className="p-1 border border-gray-300 text-center">전기 이월</td>
+                                                        <td className="p-1 border border-gray-300"></td>
+                                                        <td className="p-1 border border-gray-300"></td>
+                                                        <td className="p-1 border border-gray-300 text-right">{formatCurrency(openingBalance.bank)}</td>
+                                                    </tr>
+                                                )}
+                                                {page.bank.map(t => (
+                                                    <tr key={t.id}>
+                                                        <td className="p-1 border border-gray-300 text-center">{t.date.slice(5)}</td>
+                                                        <td className="p-1 border border-gray-300 truncate max-w-[110px]">{t.description}</td>
+                                                        <td className="p-1 border border-gray-300 text-right text-blue-600">{t.displayIncome > 0 ? formatCurrency(t.displayIncome) : ''}</td>
+                                                        <td className="p-1 border border-gray-300 text-right text-red-600">{t.displayExpense > 0 ? formatCurrency(t.displayExpense) : ''}</td>
+                                                        <td className="p-1 border border-gray-300 text-right font-medium">{formatCurrency(t.balance)}</td>
+                                                    </tr>
+                                                ))}
+                                                {page.bank.length === 0 && !page.isFirst && (
+                                                    <tr><td colSpan="5" className="p-3 text-center text-gray-400">추가 내역 없음</td></tr>
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    {/* 현금 거래 */}
+                                    <div className="flex-1">
+                                        <h3 className="font-bold text-sm text-yellow-700 mb-1 border-b border-yellow-600 pb-0.5">현금 거래</h3>
+                                        <table className="w-full text-[11px] text-left border-collapse border border-gray-300">
+                                            <thead>
+                                                <tr className="bg-yellow-50 text-center">
+                                                    <th className="p-1 border border-gray-300 w-14">날짜</th>
+                                                    <th className="p-1 border border-gray-300">내역</th>
+                                                    <th className="p-1 border border-gray-300 w-16">수입</th>
+                                                    <th className="p-1 border border-gray-300 w-16">지출</th>
+                                                    <th className="p-1 border border-gray-300 w-20">잔액</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {page.isFirst && (
+                                                    <tr className="bg-gray-50 text-gray-500 italic">
+                                                        <td className="p-1 border border-gray-300 text-center">-</td>
+                                                        <td className="p-1 border border-gray-300 text-center">전기 이월</td>
+                                                        <td className="p-1 border border-gray-300"></td>
+                                                        <td className="p-1 border border-gray-300"></td>
+                                                        <td className="p-1 border border-gray-300 text-right">{formatCurrency(openingBalance.cash)}</td>
+                                                    </tr>
+                                                )}
+                                                {page.cash.map(t => (
+                                                    <tr key={t.id}>
+                                                        <td className="p-1 border border-gray-300 text-center">{t.date.slice(5)}</td>
+                                                        <td className="p-1 border border-gray-300 truncate max-w-[110px]">{t.description}</td>
+                                                        <td className="p-1 border border-gray-300 text-right text-blue-600">{t.displayIncome > 0 ? formatCurrency(t.displayIncome) : ''}</td>
+                                                        <td className="p-1 border border-gray-300 text-right text-red-600">{t.displayExpense > 0 ? formatCurrency(t.displayExpense) : ''}</td>
+                                                        <td className="p-1 border border-gray-300 text-right font-medium">{formatCurrency(t.balance)}</td>
+                                                    </tr>
+                                                ))}
+                                                {page.cash.length === 0 && !page.isFirst && (
+                                                    <tr><td colSpan="5" className="p-3 text-center text-gray-400">추가 내역 없음</td></tr>
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* 페이지 하단 번호 */}
+                            <div className="text-center text-xs text-gray-400 pt-2">
+                                {pageIndex + 1} / {pages.length} 페이지
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            );
+        };
+
+        // --- GLOBAL DIALOG (alert / confirm 대체) ---
+        const GlobalDialog = ({ config, onClose, onConfirm }) => {
+            if (!config.isOpen) return null;
+            return (
+                <div className="fixed inset-0 bg-black bg-opacity-50 z-[10000] flex items-center justify-center p-4">
+                    <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 animate-in">
+                        <h3 className="text-lg font-bold mb-3 flex items-center gap-2">
+                            {config.type === 'alert' && <AlertCircle className="text-blue-600" />}
+                            {config.type === 'confirm' && <AlertCircle className="text-orange-600" />}
+                            {config.title}
+                        </h3>
+                        <p className="text-gray-600 mb-4 whitespace-pre-wrap">{config.message}</p>
+                        <div className="flex justify-end gap-2">
+                            {config.type !== 'alert' && <Button variant="secondary" onClick={onClose}>취소</Button>}
+                            <Button onClick={onConfirm}>확인</Button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- MAIN APP ---
+        function App() {
+            const [activeTab, setActiveTab] = useState('dashboard');
+            const [isAppClosed, setIsAppClosed] = useState(false);
+            const [isExiting, setIsExiting] = useState(false);
+            const [syncStatus, setSyncStatus] = useState('idle'); // 'idle' | 'saving' | 'saved' | 'error'
+            const [lastSyncedAt, setLastSyncedAt] = useState('');
+            const isFirstRender = useRef(true);
+
+            // 데이터 상태 (로컬 스토리지 연동 + 배열 유효성 검사)
+            const [users, setUsers] = useState(() => {
+                try {
+                    const parsed = JSON.parse(localStorage.getItem('mm_users'));
+                    return Array.isArray(parsed) ? parsed : [];
+                } catch {
+                    return [];
+                }
+            });
+
+            const [transactions, setTransactions] = useState(() => {
+                try {
+                    const parsed = JSON.parse(localStorage.getItem('mm_transactions'));
+                    return Array.isArray(parsed) ? parsed : [];
+                } catch {
+                    return [];
+                }
+            });
+
+            useEffect(() => {
+                try { localStorage.setItem('mm_users', JSON.stringify(users)); } catch {}
+            }, [users]);
+
+            useEffect(() => {
+                try { localStorage.setItem('mm_transactions', JSON.stringify(transactions)); } catch {}
+            }, [transactions]);
+
+            const fileInputRef = useRef(null);
+            const printContentRef = useRef(null);
+
+            // 다이얼로그 상태
+            const [dialogConfig, setDialogConfig] = useState({
+                isOpen: false, type: 'alert', title: '', message: '', onConfirmCallback: null
+            });
+
+            // 이용자 입력 및 수정 모달 상태 (이름 + 그룹)
+            const [newUserName, setNewUserName] = useState('');
+            const [newUserGroup, setNewUserGroup] = useState('');
+            const [editingUser, setEditingUser] = useState(null);
+
+            // 거래 입력 상태
+            const [transDate, setTransDate] = useState(new Date().toISOString().split('T')[0]);
+            const [transDesc, setTransDesc] = useState('');
+            const [transAmount, setTransAmount] = useState('');
+            const [transMethod, setTransMethod] = useState('bank'); // 'bank' | 'cash'
+            const [selectedUsers, setSelectedUsers] = useState([]);
+
+            // 조회/인쇄 및 거래 수정 모달 상태
+            const [showPreview, setShowPreview] = useState(false);
+            const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+            const [editingItem, setEditingItem] = useState(null);
+            const [reportMode, setReportMode] = useState('all'); // 'all' (전체) | 'user' (등록자별)
+            const [filterUser, setFilterUser] = useState('all');
+            const [startDate, setStartDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]);
+            const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+            const [checkedIds, setCheckedIds] = useState([]);
+
+            // --- 다이얼로그 헬퍼 ---
+            const showAlert = (message) => {
+                setDialogConfig({
+                    isOpen: true,
+                    type: 'alert',
+                    title: '알림',
+                    message,
+                    onConfirmCallback: () => setDialogConfig(prev => ({ ...prev, isOpen: false }))
+                });
+            };
+
+            const showConfirm = (message, onConfirm) => {
+                setDialogConfig({
+                    isOpen: true,
+                    type: 'confirm',
+                    title: '확인',
+                    message,
+                    onConfirmCallback: () => {
+                        setDialogConfig(prev => ({ ...prev, isOpen: false }));
+                        onConfirm();
+                    }
+                });
+            };
+
+            // --- 포맷 및 조회 헬퍼 ---
+            const formatCurrency = (amt) => new Intl.NumberFormat('ko-KR', { style: 'currency', currency: 'KRW' }).format(amt || 0);
+
+            const getUserObj = (id) => users.find(u => u.id === id) || null;
+
+            const getUserName = (id) => {
+                const u = getUserObj(id);
+                return u ? u.name : '삭제된 이용자';
+            };
+
+            const getUserDisplay = (id) => {
+                const u = getUserObj(id);
+                if (!u) return '삭제된 이용자';
+                return u.group ? `${u.name} (${u.group})` : u.name;
+            };
+
+            const getInvolvedSummary = (ids = []) => {
+                if (!ids || ids.length === 0) return '0명 갹출';
+                const firstName = getUserName(ids[0]);
+                if (ids.length === 1) return `${firstName} (1명 갹출)`;
+                return `${firstName} 외 ${ids.length - 1}명 (${ids.length}명 갹출)`;
+            };
+
+            // 등록된 그룹 목록 (중복 제거)
+            const uniqueGroups = useMemo(() => {
+                const set = new Set();
+                users.forEach(u => {
+                    if (u.group && u.group.trim()) set.add(u.group.trim());
+                });
+                return Array.from(set);
+            }, [users]);
+
+            // --- 구글 시트(cash 시트) 자동 저장 ---
+            const saveToGoogleSheet = async (currentUsers = users, currentTransactions = transactions, showNotice = false) => {
+                setSyncStatus('saving');
+                try {
+                    const payload = {
+                        sheetName: GOOGLE_SHEET_NAME,
+                        updatedAt: new Date().toISOString(),
+                        users: currentUsers,
+                        transactions: currentTransactions
+                    };
+                    await fetch(GOOGLE_SCRIPT_URL, {
+                        method: 'POST',
+                        mode: 'no-cors',
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                        body: JSON.stringify(payload)
+                    });
+                    const nowTime = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                    setSyncStatus('saved');
+                    setLastSyncedAt(nowTime);
+                    if (showNotice) {
+                        showAlert(`구글 시트('${GOOGLE_SHEET_NAME}')에 저장 요청을 완료했습니다.\n(${nowTime})`);
+                    }
+                    return true;
+                } catch (err) {
+                    setSyncStatus('error');
+                    if (showNotice) {
+                        showAlert("구글 시트 저장 중 오류가 발생했습니다.\n인터넷 연결 상태를 확인해주세요.");
+                    }
+                    return false;
+                }
+            };
+
+            // 데이터 변경 시 1초 디바운스 후 구글 시트 자동 저장
+            useEffect(() => {
+                if (isFirstRender.current) {
+                    isFirstRender.current = false;
+                    return;
+                }
+                const timer = setTimeout(() => {
+                    saveToGoogleSheet(users, transactions, false);
+                }, 1000);
+                return () => clearTimeout(timer);
+            }, [users, transactions]);
+
+            // --- 백업 / 복구 / 전체화면 / 종료 ---
+            const toggleFullScreen = () => {
+                if (!document.fullscreenElement) {
+                    document.documentElement.requestFullscreen().catch(() => {});
+                } else {
+                    document.exitFullscreen().catch(() => {});
+                }
+            };
+
+            const handleBackup = (isAuto = false) => {
+                const now = new Date();
+                const dateStr = now.getFullYear() + "-" +
+                    String(now.getMonth() + 1).padStart(2, '0') + "-" +
+                    String(now.getDate()).padStart(2, '0');
+                const timeStr = String(now.getHours()).padStart(2, '0') + "-" +
+                    String(now.getMinutes()).padStart(2, '0') + "-" +
+                    String(now.getSeconds()).padStart(2, '0');
+                const prefix = isAuto ? "자동백업" : "백업";
+                const filename = `동광복지재단_${prefix}_${dateStr}_${timeStr}.json`;
+
+                const data = { users, transactions, exportDate: now.toISOString() };
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement("a");
+                link.href = url;
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+                if (!isAuto) {
+                    showAlert("백업 파일이 생성되었습니다.\n다운로드 폴더를 확인해주세요.");
+                }
+            };
+
+            const handleRestoreClick = () => {
+                if (fileInputRef.current) fileInputRef.current.click();
+            };
+
+            const handleRestore = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    try {
+                        const parsed = JSON.parse(ev.target.result);
+                        if (Array.isArray(parsed.users) && Array.isArray(parsed.transactions)) {
+                            showConfirm("데이터를 복구하시겠습니까?\n현재 데이터는 백업 파일 내용으로 대체됩니다.", () => {
+                                setUsers(parsed.users);
+                                setTransactions(parsed.transactions);
+                                showAlert("데이터 복구가 완료되었습니다.");
+                            });
+                        } else {
+                            showAlert("올바르지 않은 백업 파일 형식입니다.");
+                        }
+                    } catch {
+                        showAlert("파일을 읽는 중 오류가 발생했습니다.");
+                    }
+                };
+                reader.readAsText(file);
+                e.target.value = '';
+            };
+
+            const handleExit = () => {
+                showConfirm(`프로그램을 종료하시겠습니까?\n종료 시 구글 시트('${GOOGLE_SHEET_NAME}')에 저장되고 자동 백업 파일이 생성됩니다.`, async () => {
+                    setIsExiting(true);
+                    await saveToGoogleSheet(users, transactions, false);
+                    handleBackup(true);
+                    setIsExiting(false);
+                    setIsAppClosed(true);
+                    if (document.fullscreenElement) {
+                        document.exitFullscreen().catch(() => {});
+                    }
+                });
+            };
+
+            // --- 탭 및 폼 초기화 ---
+            const resetForm = () => {
+                setTransDesc('');
+                setTransAmount('');
+                setSelectedUsers([]);
+            };
+
+            const handleTabChange = (tabId) => {
+                setActiveTab(tabId);
+                resetForm();
+                setShowPreview(false);
+                setCheckedIds([]);
+            };
+
+            // 조회/인쇄 모드 전환 ('all' | 'user')
+            const handleReportModeChange = (mode) => {
+                setReportMode(mode);
+                setCheckedIds([]);
+                if (mode === 'all') {
+                    setFilterUser('all');
+                } else {
+                    if (users.length > 0) {
+                        setFilterUser(prev => (prev !== 'all' && users.some(u => u.id === prev)) ? prev : users[0].id);
+                    } else {
+                        setFilterUser('');
+                    }
+                }
+            };
+
+            // --- 이용자 등록 / 수정 / 삭제 ---
+            const addUser = () => {
+                if (!newUserName.trim()) {
+                    showAlert("이용자 이름을 입력해주세요.");
+                    return;
+                }
+                if (users.length >= 30) {
+                    showAlert("이용자는 최대 30명까지 등록 가능합니다.");
+                    return;
+                }
+                const newUser = {
+                    id: Date.now().toString(),
+                    name: newUserName.trim(),
+                    group: newUserGroup.trim()
+                };
+                setUsers(prev => [...prev, newUser]);
+                setNewUserName('');
+                setNewUserGroup('');
+            };
+
+            const startEditUser = (user) => {
+                setEditingUser({
+                    id: user.id,
+                    name: user.name || '',
+                    group: user.group || ''
+                });
+            };
+
+            const saveEditedUser = () => {
+                if (!editingUser || !editingUser.name.trim()) {
+                    showAlert("이용자 이름을 입력해주세요.");
+                    return;
+                }
+                setUsers(prev => prev.map(u =>
+                    u.id === editingUser.id
+                        ? { ...u, name: editingUser.name.trim(), group: editingUser.group.trim() }
+                        : u
+                ));
+                setEditingUser(null);
+            };
+
+            const removeUser = (id) => {
+                showConfirm("이용자를 삭제하시겠습니까?\n관련 거래 내역은 유지됩니다.", () => {
+                    setUsers(prev => {
+                        const nextUsers = prev.filter(u => u.id !== id);
+                        if (filterUser === id) {
+                            if (reportMode === 'user' && nextUsers.length > 0) {
+                                setFilterUser(nextUsers[0].id);
+                            } else {
+                                setReportMode('all');
+                                setFilterUser('all');
+                            }
+                        }
+                        return nextUsers;
+                    });
+                });
+            };
+
+            // --- 수입 / 지출 등록 및 관리 ---
+            const handleIncomeSubmit = () => {
+                if (!transDesc.trim() || !transAmount || selectedUsers.length === 0) {
+                    showAlert("내역, 금액, 그리고 최소 1명의 이용자를 선택해주세요.");
+                    return;
+                }
+                const amt = parseInt(transAmount, 10);
+                if (isNaN(amt) || amt <= 0) {
+                    showAlert("올바른 금액을 입력해주세요.");
+                    return;
+                }
+                const nowId = Date.now();
+                const newTxList = selectedUsers.map((uid, idx) => ({
+                    id: nowId + idx,
+                    date: transDate,
+                    type: 'income',
+                    method: transMethod,
+                    description: transDesc.trim(),
+                    amount: amt,
+                    userId: uid,
+                    involvedCount: 1,
+                    totalAmount: amt
+                }));
+                setTransactions(prev => [...newTxList, ...prev]);
+                resetForm();
+                showAlert(`${selectedUsers.length}명의 수입이 일괄 등록되었습니다.`);
+            };
+
+            const handleExpenseSubmit = () => {
+                if (!transDesc.trim() || !transAmount || selectedUsers.length === 0) {
+                    showAlert("내역, 금액, 그리고 최소 1명의 이용자를 선택해주세요.");
+                    return;
+                }
+                const total = parseInt(transAmount, 10);
+                if (isNaN(total) || total <= 0) {
+                    showAlert("올바른 금액을 입력해주세요.");
+                    return;
+                }
+                const count = selectedUsers.length;
+                const split = Math.floor(total / count);
+                const newTx = {
+                    id: Date.now(),
+                    date: transDate,
+                    type: 'expense',
+                    method: transMethod,
+                    description: transDesc.trim(),
+                    amount: split,
+                    totalAmount: total,
+                    involvedUserIds: selectedUsers,
+                    involvedCount: count
+                };
+                setTransactions(prev => [newTx, ...prev]);
+                resetForm();
+                showAlert(`${count}명 갹출 지출(1인당 ${formatCurrency(split)})이 출납부에 등록되었습니다.`);
+            };
+
+            const deleteTransaction = (id) => {
+                showConfirm("이 내역을 정말 삭제하시겠습니까?", () => {
+                    setTransactions(prev => prev.filter(t => t.id !== id));
+                    setCheckedIds(prev => prev.filter(cid => cid !== id));
+                });
+            };
+
+            const startEditTransaction = (t) => {
+                setEditingItem({
+                    ...t,
+                    method: t.method || 'bank',
+                    editAmount: t.type === 'expense' ? t.totalAmount : t.amount,
+                    editUsers: t.type === 'expense' ? (t.involvedUserIds || []) : [t.userId]
+                });
+                setIsEditModalOpen(true);
+            };
+
+            const saveEditedTransaction = () => {
+                if (!editingItem || !editingItem.description.trim() || !editingItem.editAmount || editingItem.editUsers.length === 0) {
+                    showAlert("모든 필드를 올바르게 입력해주세요.");
+                    return;
+                }
+                const total = parseInt(editingItem.editAmount, 10);
+                if (isNaN(total) || total <= 0) {
+                    showAlert("올바른 금액을 입력해주세요.");
+                    return;
+                }
+                const updated = {
+                    ...editingItem,
+                    description: editingItem.description.trim(),
+                    totalAmount: total,
+                    involvedCount: editingItem.editUsers.length
+                };
+                if (editingItem.type === 'income') {
+                    updated.amount = total;
+                    updated.userId = editingItem.editUsers[0];
+                    updated.involvedCount = 1;
+                } else {
+                    updated.amount = Math.floor(total / editingItem.editUsers.length);
+                    updated.involvedUserIds = editingItem.editUsers;
+                }
+                delete updated.editAmount;
+                delete updated.editUsers;
+
+                setTransactions(prev => prev.map(t => t.id === editingItem.id ? updated : t));
+                setIsEditModalOpen(false);
+                setEditingItem(null);
+            };
+
+            // 이용자 선택 토글
+            const toggleUserSelection = (id) => {
+                setSelectedUsers(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+            };
+
+            const selectAllUsers = () => {
+                if (selectedUsers.length === users.length) {
+                    setSelectedUsers([]);
+                } else {
+                    setSelectedUsers(users.map(u => u.id));
+                }
+            };
+
+            const toggleGroupSelection = (groupName) => {
+                const groupIds = users.filter(u => (u.group || '').trim() === groupName).map(u => u.id);
+                const allSelected = groupIds.every(id => selectedUsers.includes(id));
+                if (allSelected) {
+                    setSelectedUsers(prev => prev.filter(id => !groupIds.includes(id)));
+                } else {
+                    setSelectedUsers(prev => Array.from(new Set([...prev, ...groupIds])));
+                }
+            };
+
+            const toggleEditUserSelection = (id) => {
+                if (!editingItem) return;
+                if (editingItem.type === 'income') {
+                    setEditingItem(prev => ({ ...prev, editUsers: [id] }));
+                } else {
+                    setEditingItem(prev => ({
+                        ...prev,
+                        editUsers: prev.editUsers.includes(id)
+                            ? prev.editUsers.filter(x => x !== id)
+                            : [...prev.editUsers, id]
+                    }));
+                }
+            };
+
+            // 체크박스 선택 삭제
+            const toggleCheck = (id) => {
+                setCheckedIds(prev => prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]);
+            };
+
+            const toggleCheckAll = (list) => {
+                if (checkedIds.length === list.length && list.length > 0) {
+                    setCheckedIds([]);
+                } else {
+                    setCheckedIds(list.map(t => t.id));
+                }
+            };
+
+            const handleDeleteChecked = () => {
+                showConfirm(`선택한 ${checkedIds.length}개의 항목을 삭제하시겠습니까?`, () => {
+                    setTransactions(prev => prev.filter(t => !checkedIds.includes(t.id)));
+                    setCheckedIds([]);
+                    showAlert("선택한 내역이 삭제되었습니다.");
+                });
+            };
+
+            // --- 팝업 인쇄 ---
+            const handlePrint = () => {
+                if (!printContentRef.current) return;
+                const content = printContentRef.current.innerHTML;
+                const printWindow = window.open('', '_blank', 'width=1100,height=800');
+                if (!printWindow) {
+                    showAlert("팝업 차단이 감지되었습니다.\n브라우저에서 팝업을 허용한 뒤 다시 시도해주세요.");
+                    return;
+                }
+                printWindow.document.open();
+                printWindow.document.write(`
+                    <!DOCTYPE html>
+                    <html lang="ko">
+                    <head>
+                        <meta charset="UTF-8">
+                        <title>동광복지재단 금전출납부 인쇄</title>
+                        <script src="https://cdn.tailwindcss.com"><\/script>
+                        <style>
+                            @page { size: A4 landscape; margin: 0; }
+                            html, body {
+                                margin: 0 !important;
+                                padding: 0 !important;
+                                background: white !important;
+                                font-family: sans-serif;
+                                -webkit-print-color-adjust: exact !important;
+                                print-color-adjust: exact !important;
+                            }
+                            .print-page {
+                                width: 297mm;
+                                height: 202mm;
+                                padding: 10mm;
+                                margin: 0 auto;
+                                box-sizing: border-box;
+                                position: relative;
+                                overflow: hidden;
+                                page-break-after: always;
+                                break-after: page;
+                                page-break-inside: avoid;
+                                break-inside: avoid;
+                            }
+                            .print-page:last-child,
+                            .print-page.last-page {
+                                page-break-after: auto !important;
+                                break-after: auto !important;
+                            }
+                        </style>
+                    </head>
+                    <body onload="setTimeout(function(){ window.print(); }, 800)">
+                        ${content}
+                    </body>
+                    </html>
+                `);
+                printWindow.document.close();
+            };
+
+            // --- 통계 및 필터 계산 ---
+            const activeFilterUser = reportMode === 'all' ? 'all' : filterUser;
+
+            const filteredTransactions = useMemo(() => {
+                if (reportMode === 'user' && !activeFilterUser) return [];
+                const result = transactions.filter(t => {
+                    const dateMatch = t.date >= startDate && t.date <= endDate;
+                    if (!dateMatch) return false;
+                    if (activeFilterUser === 'all') return true;
+                    return t.type === 'income'
+                        ? t.userId === activeFilterUser
+                        : (t.involvedUserIds || []).includes(activeFilterUser);
+                });
+                // 오래된 날짜순 정렬 (오름차순)
+                return result.sort((a, b) => a.date < b.date ? -1 : (a.date > b.date ? 1 : a.id - b.id));
+            }, [transactions, startDate, endDate, reportMode, activeFilterUser]);
+
+            const openingBalances = useMemo(() => {
+                let ob = { bank: 0, cash: 0 };
+                if (reportMode === 'user' && !activeFilterUser) return ob;
+                transactions.forEach(t => {
+                    if (t.date < startDate) {
+                        const relevant = activeFilterUser === 'all' || (
+                            t.type === 'income'
+                                ? t.userId === activeFilterUser
+                                : (t.involvedUserIds || []).includes(activeFilterUser)
+                        );
+                        if (!relevant) return;
+                        const val = t.type === 'income' ? t.amount : (activeFilterUser === 'all' ? t.totalAmount : t.amount);
+                        const method = t.method || 'bank';
+                        if (method === 'bank') ob.bank += (t.type === 'income' ? val : -val);
+                        else ob.cash += (t.type === 'income' ? val : -val);
+                    }
+                });
+                return ob;
+            }, [transactions, startDate, reportMode, activeFilterUser]);
+
+            const stats = useMemo(() => {
+                let s = { totalIncome: 0, totalExpense: 0, bankIncome: 0, bankExpense: 0, cashIncome: 0, cashExpense: 0 };
+                filteredTransactions.forEach(t => {
+                    const val = t.type === 'income' ? t.amount : (activeFilterUser === 'all' ? t.totalAmount : t.amount);
+                    const method = t.method || 'bank';
+                    if (t.type === 'income') {
+                        s.totalIncome += val;
+                        if (method === 'bank') s.bankIncome += val; else s.cashIncome += val;
+                    } else {
+                        s.totalExpense += val;
+                        if (method === 'bank') s.bankExpense += val; else s.cashExpense += val;
+                    }
+                });
+                s.bankBalance = openingBalances.bank + s.bankIncome - s.bankExpense;
+                s.cashBalance = openingBalances.cash + s.cashIncome - s.cashExpense;
+                s.totalBalance = s.bankBalance + s.cashBalance;
+                return s;
+            }, [filteredTransactions, openingBalances, activeFilterUser]);
+
+            const currentTargetName = activeFilterUser === 'all'
+                ? '전체 이용자 (전체 출납부)'
+                : (activeFilterUser ? `등록자별 - ${getUserDisplay(activeFilterUser)}` : '선택된 등록자 없음');
+
+            // 대시보드용 이용자별 통장/현금 잔액 계산
+            const userBalances = useMemo(() => {
+                const bals = {};
+                users.forEach(u => {
+                    bals[u.id] = { bank: 0, cash: 0 };
+                });
+                transactions.forEach(t => {
+                    const method = t.method || 'bank';
+                    if (t.type === 'income') {
+                        if (bals[t.userId]) bals[t.userId][method] += t.amount;
+                    } else {
+                        (t.involvedUserIds || []).forEach(uid => {
+                            if (bals[uid]) bals[uid][method] -= t.amount;
+                        });
+                    }
+                });
+                return bals;
+            }, [users, transactions]);
+
+            // --- 공통 서브 렌더링 ---
+            const MethodSelector = ({ value, onChange, bankLabel = '통장' }) => (
+                <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">결제 수단</label>
+                    <div className="flex gap-2">
+                        <button
+                            type="button"
+                            onClick={() => onChange('bank')}
+                            className={`flex-1 py-2.5 rounded-lg border flex items-center justify-center gap-2 font-medium transition-colors ${
+                                value === 'bank' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+                            }`}
+                        >
+                            <CreditCard size={18} /> {bankLabel}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => onChange('cash')}
+                            className={`flex-1 py-2.5 rounded-lg border flex items-center justify-center gap-2 font-medium transition-colors ${
+                                value === 'cash' ? 'bg-yellow-500 text-white border-yellow-500' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+                            }`}
+                        >
+                            <Banknote size={18} /> 현금
+                        </button>
+                    </div>
+                </div>
+            );
+
+            const renderUserSelector = (label) => (
+                <div>
+                    <div className="flex justify-between items-center mb-2 flex-wrap gap-2">
+                        <label className="text-sm font-medium text-gray-700">{label}</label>
+                        <div className="flex items-center gap-2 flex-wrap">
+                            {uniqueGroups.map(g => (
+                                <button
+                                    key={g}
+                                    type="button"
+                                    onClick={() => toggleGroupSelection(g)}
+                                    className="text-xs px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200"
+                                >
+                                    {g} 선택
+                                </button>
+                            ))}
+                            <button
+                                type="button"
+                                onClick={selectAllUsers}
+                                className="text-xs text-blue-600 font-medium hover:underline"
+                            >
+                                {selectedUsers.length === users.length && users.length > 0 ? '전체 해제' : '전체 선택'}
+                            </button>
+                        </div>
+                    </div>
+                    {users.length === 0 ? (
+                        <div className="p-4 bg-yellow-50 text-yellow-700 rounded-lg text-sm">
+                            먼저 홈 화면에서 이용자를 등록해주세요.
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-60 overflow-y-auto border p-2 rounded-lg bg-gray-50">
+                            {users.map(u => (
+                                <div
+                                    key={u.id}
+                                    onClick={() => toggleUserSelection(u.id)}
+                                    className={`cursor-pointer p-2 rounded border flex items-center gap-2 select-none transition-colors ${
+                                        selectedUsers.includes(u.id)
+                                            ? 'bg-blue-100 border-blue-300 text-blue-800'
+                                            : 'bg-white border-gray-200 hover:border-blue-300'
+                                    }`}
+                                >
+                                    <div className={`w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center ${
+                                        selectedUsers.includes(u.id) ? 'bg-blue-500 border-blue-500' : 'bg-white border-gray-300'
+                                    }`}>
+                                        {selectedUsers.includes(u.id) && <Check size={10} className="text-white" />}
+                                    </div>
+                                    <div className="truncate text-sm">
+                                        <span className="font-medium">{u.name}</span>
+                                        {u.group && <span className="text-xs text-gray-500 ml-1">({u.group})</span>}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            );
+
+            // --- 종료 화면 ---
+            if (isAppClosed) {
+                return (
+                    <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center text-white p-6 text-center">
+                        <Power size={64} className="mb-4 text-gray-400" />
+                        <h1 className="text-3xl font-bold mb-3">프로그램이 안전하게 종료되었습니다.</h1>
+                        <p className="text-gray-300 mb-2">구글 시트('{GOOGLE_SHEET_NAME}') 저장 및 자동 백업 파일 다운로드가 완료되었습니다.</p>
+                        {lastSyncedAt && <p className="text-sm text-gray-400 mb-8">마지막 시트 저장 시각: {lastSyncedAt}</p>}
+                        <Button onClick={() => window.location.reload()} className="bg-blue-600 hover:bg-blue-700 text-white">
+                            다시 시작하기
+                        </Button>
+                    </div>
+                );
+            }
+
+            // --- 메인 UI ---
+            return (
+                <div className="min-h-screen pb-10">
+                    <div className="no-print">
+                        {/* 상단 네비게이션 */}
+                        <nav className="bg-white border-b border-gray-200 sticky top-0 z-20 px-4 md:px-6 py-3 shadow-sm">
+                            <div className="max-w-full mx-auto flex flex-col lg:flex-row justify-between items-center gap-3">
+                                <div className="flex items-center gap-2">
+                                    <div className="bg-blue-600 p-2 rounded-lg text-white">
+                                        <Wallet size={22} />
+                                    </div>
+                                    <h1 className="text-xl font-bold text-gray-800">동광복지재단 금전출납부</h1>
+                                </div>
+
+                                <div className="flex items-center gap-2 flex-wrap justify-center lg:justify-end">
+                                    {/* 구글 시트 동기화 상태 & 수동 저장 버튼 */}
+                                    <button
+                                        type="button"
+                                        onClick={() => saveToGoogleSheet(users, transactions, true)}
+                                        title={`구글 시트(${GOOGLE_SHEET_NAME})에 즉시 저장`}
+                                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                                            syncStatus === 'saving'
+                                                ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                                : syncStatus === 'error'
+                                                ? 'bg-red-50 text-red-700 border-red-200'
+                                                : 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
+                                        }`}
+                                    >
+                                        <Cloud size={15} />
+                                        {syncStatus === 'saving' && '시트 저장 중...'}
+                                        {syncStatus === 'saved' && `시트 저장됨 (${lastSyncedAt})`}
+                                        {syncStatus === 'error' && '시트 저장 오류 (재시도)'}
+                                        {syncStatus === 'idle' && `구글 시트(${GOOGLE_SHEET_NAME}) 저장`}
+                                    </button>
+
+                                    {/* 백업 / 복구 / 전체화면 / 종료 */}
+                                    <div className="flex items-center bg-gray-100 p-1 rounded-lg">
+                                        <Button variant="icon" onClick={() => handleBackup(false)} title="백업 파일 저장 (내보내기)">
+                                            <Download size={18} />
+                                        </Button>
+                                        <Button variant="icon" onClick={handleRestoreClick} title="백업 파일 불러오기 (복구)">
+                                            <Upload size={18} />
+                                        </Button>
+                                        <input type="file" ref={fileInputRef} onChange={handleRestore} accept=".json" className="hidden" />
+                                        <div className="w-px h-4 bg-gray-300 mx-1"></div>
+                                        <Button variant="icon" onClick={toggleFullScreen} title="전체 화면">
+                                            <Maximize size={18} />
+                                        </Button>
+                                        <Button variant="icon" onClick={handleExit} disabled={isExiting} title="종료 (구글 시트 저장 + 자동 백업)">
+                                            <Power size={18} className="text-red-500" />
+                                        </Button>
+                                    </div>
+
+                                    {/* 탭 메뉴 */}
+                                    <div className="flex bg-gray-100 p-1 rounded-lg overflow-x-auto">
+                                        {[
+                                            { id: 'dashboard', label: '홈', icon: Users },
+                                            { id: 'income', label: '수입', icon: UserPlus },
+                                            { id: 'expense', label: '지출', icon: Receipt },
+                                            { id: 'report', label: '조회 / 인쇄', icon: Printer }
+                                        ].map(tab => (
+                                            <button
+                                                key={tab.id}
+                                                type="button"
+                                                onClick={() => handleTabChange(tab.id)}
+                                                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-md text-sm font-medium whitespace-nowrap transition-all ${
+                                                    activeTab === tab.id
+                                                        ? 'bg-white text-blue-600 shadow-sm'
+                                                        : 'text-gray-500 hover:text-gray-800'
+                                                }`}
+                                            >
+                                                <tab.icon size={16} />
+                                                {tab.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        </nav>
+
+                        <main className="max-w-full mx-auto px-4 md:px-6 py-6">
+                            {/* [홈 / 대시보드] */}
+                            {activeTab === 'dashboard' && (
+                                <div className="space-y-6">
+                                    {/* 이용자별 통장/현금 잔액 현황 (한 줄에 2명씩 리스트형) */}
+                                    <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
+                                        <div className="flex justify-between items-center mb-4">
+                                            <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                                                <Users size={20} className="text-blue-600" />
+                                                이용자별 잔액 현황 (총 {users.length}명)
+                                            </h3>
+                                            <span className="text-xs text-gray-400">통장 / 현금 시제 현황</span>
+                                        </div>
+
+                                        {users.length === 0 ? (
+                                            <p className="text-gray-400 text-center py-6 text-sm">등록된 이용자가 없습니다. 아래에서 이용자를 등록해주세요.</p>
+                                        ) : (
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-72 overflow-y-auto p-1">
+                                                {users.map(u => {
+                                                    const bal = userBalances[u.id] || { bank: 0, cash: 0 };
+                                                    return (
+                                                        <div key={u.id} className="border border-gray-200 rounded-lg px-3.5 py-2.5 flex justify-between items-center bg-white hover:bg-gray-50 transition-colors text-sm">
+                                                            <div className="flex items-center gap-2 min-w-0">
+                                                                <span className="font-bold text-gray-800 truncate">{u.name}</span>
+                                                                {u.group && (
+                                                                    <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100 whitespace-nowrap">
+                                                                        {u.group}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <div className="flex items-center gap-3 text-xs whitespace-nowrap ml-2">
+                                                                <span className="text-blue-600">
+                                                                    통장 <strong className="text-sm">{formatCurrency(bal.bank)}</strong>
+                                                                </span>
+                                                                <span className="text-yellow-600">
+                                                                    현금 <strong className="text-sm">{formatCurrency(bal.cash)}</strong>
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                        {/* 이용자 등록 / 관리 */}
+                                        <div className="md:col-span-1">
+                                            <Card title="이용자 등록 / 관리">
+                                                <div className="space-y-2 mb-3">
+                                                    <input
+                                                        type="text"
+                                                        value={newUserName}
+                                                        onChange={e => setNewUserName(e.target.value)}
+                                                        placeholder="이용자 이름 (예: 홍길동)"
+                                                        lang="ko"
+                                                        style={{ imeMode: 'active' }}
+                                                        onKeyPress={e => e.key === 'Enter' && addUser()}
+                                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                                                    />
+                                                    <div className="flex gap-2">
+                                                        <input
+                                                            type="text"
+                                                            value={newUserGroup}
+                                                            onChange={e => setNewUserGroup(e.target.value)}
+                                                            placeholder="그룹 입력 (예: 1생활실, A조)"
+                                                            lang="ko"
+                                                            style={{ imeMode: 'active' }}
+                                                            onKeyPress={e => e.key === 'Enter' && addUser()}
+                                                            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                                                        />
+                                                        <Button onClick={addUser} className="px-4 py-2 text-sm whitespace-nowrap">등록</Button>
+                                                    </div>
+                                                </div>
+
+                                                <div className="text-xs text-gray-500 mb-3 flex justify-between items-center">
+                                                    <span>등록된 인원: <strong className="text-blue-600">{users.length}</strong> / 30명</span>
+                                                </div>
+
+                                                <ul className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+                                                    {users.length === 0 ? (
+                                                        <li className="text-center text-gray-400 py-6 text-sm">등록된 이용자가 없습니다.</li>
+                                                    ) : (
+                                                        users.map(u => (
+                                                            <li key={u.id} className="flex justify-between items-center bg-gray-50 px-3 py-2 rounded-lg border border-gray-100">
+                                                                <div className="flex items-center gap-2 min-w-0">
+                                                                    <span className="font-medium text-gray-800 truncate">{u.name}</span>
+                                                                    {u.group && (
+                                                                        <span className="text-xs px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-100 whitespace-nowrap">
+                                                                            {u.group}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                <div className="flex gap-1 flex-shrink-0">
+                                                                    <button onClick={() => startEditUser(u)} className="text-gray-400 hover:text-blue-600 p-1" title="이름/그룹 수정">
+                                                                        <Edit2 size={15} />
+                                                                    </button>
+                                                                    <button onClick={() => removeUser(u.id)} className="text-gray-400 hover:text-red-600 p-1" title="삭제">
+                                                                        <Trash2 size={15} />
+                                                                    </button>
+                                                                </div>
+                                                            </li>
+                                                        ))
+                                                    )}
+                                                </ul>
+                                            </Card>
+                                        </div>
+
+                                        {/* 최근 활동 내역 */}
+                                        <div className="md:col-span-2">
+                                            <Card title="최근 활동 내역">
+                                                {transactions.length === 0 ? (
+                                                    <p className="text-gray-400 text-center py-12 text-sm">아직 기록된 수입/지출 내역이 없습니다.</p>
+                                                ) : (
+                                                    <div className="space-y-3">
+                                                        {transactions.slice(0, 8).map(t => (
+                                                            <div key={t.id} className="flex justify-between items-center border-b border-gray-100 last:border-0 pb-3 last:pb-0">
+                                                                <div className="flex items-center gap-3 min-w-0">
+                                                                    <div className={`p-2 rounded-full flex-shrink-0 ${t.type === 'income' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                                                                        {t.type === 'income' ? <UserPlus size={16} /> : <Receipt size={16} />}
+                                                                    </div>
+                                                                    <div className="min-w-0">
+                                                                        <p className="font-medium text-gray-800 truncate">{t.description}</p>
+                                                                        <div className="flex flex-wrap gap-1.5 text-xs text-gray-500">
+                                                                            <span>{t.date}</span>
+                                                                            <span>•</span>
+                                                                            <span className={`font-medium ${(t.method || 'bank') === 'bank' ? 'text-blue-600' : 'text-yellow-600'}`}>
+                                                                                {(t.method || 'bank') === 'bank' ? '통장' : '현금'}
+                                                                            </span>
+                                                                            <span>•</span>
+                                                                            <span>{t.type === 'income' ? getUserDisplay(t.userId) : getInvolvedSummary(t.involvedUserIds)}</span>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                                <span className={`font-bold whitespace-nowrap ml-3 ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
+                                                                    {t.type === 'income' ? '+' : '-'}{formatCurrency(t.totalAmount)}
+                                                                </span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </Card>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* [수입 등록] */}
+                            {activeTab === 'income' && (
+                                <div className="max-w-2xl mx-auto">
+                                    <Card title="수입 일괄 등록">
+                                        <div className="space-y-4">
+                                            <div className="p-3 bg-blue-50 text-blue-800 rounded-lg text-sm">
+                                                * 동일한 금액의 수입(예: 용돈, 회비, 후원금)을 선택한 여러 이용자에게 한 번에 적용합니다.
+                                            </div>
+                                            <Input type="date" label="날짜" value={transDate} onChange={e => setTransDate(e.target.value)} />
+                                            <MethodSelector value={transMethod} onChange={setTransMethod} />
+                                            <Input label="내역" placeholder="예: 11월 용돈, 후원금" value={transDesc} onChange={e => setTransDesc(e.target.value)} />
+                                            <Input type="number" label="금액 (1인당)" placeholder="0" value={transAmount} onChange={e => setTransAmount(e.target.value)} />
+                                            {renderUserSelector(`납부자 / 대상자 선택 (현재 ${selectedUsers.length}명 선택됨)`)}
+                                            {parseInt(transAmount, 10) > 0 && selectedUsers.length > 0 && (
+                                                <div className="mt-2 text-right font-medium text-blue-600">
+                                                    총 등록 예정 금액: {formatCurrency(parseInt(transAmount, 10) * selectedUsers.length)}
+                                                </div>
+                                            )}
+                                            <div className="pt-4 border-t mt-4 flex justify-end">
+                                                <Button onClick={handleIncomeSubmit}>수입 일괄 등록하기</Button>
+                                            </div>
+                                        </div>
+                                    </Card>
+                                </div>
+                            )}
+
+                            {/* [지출 등록] */}
+                            {activeTab === 'expense' && (
+                                <div className="max-w-2xl mx-auto">
+                                    <Card title="지출 등록 (이용자 선택 갹출 자동계산)">
+                                        <div className="space-y-4">
+                                            <div className="p-3 bg-red-50 text-red-800 rounded-lg text-sm">
+                                                * 지출에 참여한 등록 이용자들을 선택하면 총 지출 금액을 인원수로 나누어 1인당 갹출액이 자동 계산되어 출납부에 기록됩니다.
+                                            </div>
+                                            <Input type="date" label="날짜" value={transDate} onChange={e => setTransDate(e.target.value)} />
+                                            <MethodSelector value={transMethod} onChange={setTransMethod} bankLabel="카드" />
+                                            <Input label="지출 내역" placeholder="예: 점심 식사, 간식비" value={transDesc} onChange={e => setTransDesc(e.target.value)} />
+                                            <Input type="number" label="총 지출 금액" placeholder="0" value={transAmount} onChange={e => setTransAmount(e.target.value)} />
+                                            {renderUserSelector(`갹출 참여 이용자 선택 (현재 ${selectedUsers.length}명)`)}
+                                            {parseInt(transAmount, 10) > 0 && selectedUsers.length > 0 && (() => {
+                                                const total = parseInt(transAmount, 10);
+                                                const count = selectedUsers.length;
+                                                const perPerson = Math.floor(total / count);
+                                                const remainder = total - (perPerson * count);
+                                                return (
+                                                    <div className="mt-3 p-4 bg-blue-50 border border-blue-100 text-blue-900 rounded-lg text-sm space-y-2">
+                                                        <div className="flex justify-between items-center gap-2">
+                                                            <span className="font-medium whitespace-nowrap">선택 인원 ({count}명)</span>
+                                                            <span className="text-xs text-blue-700 truncate">
+                                                                {selectedUsers.map(uid => getUserName(uid)).join(', ')}
+                                                            </span>
+                                                        </div>
+                                                        <div className="flex justify-between items-center border-t border-blue-200 pt-2">
+                                                            <span>1인당 자동 갹출액</span>
+                                                            <span className="text-lg font-bold text-blue-700">{formatCurrency(perPerson)}</span>
+                                                        </div>
+                                                        {remainder > 0 && (
+                                                            <div className="text-xs text-blue-600 text-right">
+                                                                * 1원 단위 절사 차액: {formatCurrency(remainder)} (전체 출납부에는 총액 {formatCurrency(total)}으로 기록)
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })()}
+                                            <div className="pt-4 border-t mt-4 flex justify-end">
+                                                <Button variant="danger" onClick={handleExpenseSubmit}>갹출 지출 등록하기</Button>
+                                            </div>
+                                        </div>
+                                    </Card>
+                                </div>
+                            )}
+
+                            {/* [조회 / 인쇄] */}
+                            {activeTab === 'report' && (
+                                <div className="space-y-6">
+                                    <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 space-y-4">
+                                        {/* 전체 / 등록자별 모드 선택 버튼 */}
+                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-gray-100">
+                                            <div className="flex bg-gray-100 p-1 rounded-lg w-full sm:w-auto">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleReportModeChange('all')}
+                                                    className={`flex-1 sm:flex-none px-4 py-2 rounded-md text-sm font-bold transition-all ${
+                                                        reportMode === 'all' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                                                    }`}
+                                                >
+                                                    전체 조회 / 인쇄
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleReportModeChange('user')}
+                                                    className={`flex-1 sm:flex-none px-4 py-2 rounded-md text-sm font-bold transition-all ${
+                                                        reportMode === 'user' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                                                    }`}
+                                                >
+                                                    등록자별 조회 / 인쇄
+                                                </button>
+                                            </div>
+
+                                            <div className="flex gap-2">
+                                                <Button onClick={() => setShowPreview(true)} variant="outline" disabled={reportMode === 'user' && !activeFilterUser}>
+                                                    <Eye size={18} /> 미리보기
+                                                </Button>
+                                                <Button onClick={handlePrint} variant="secondary" disabled={reportMode === 'user' && !activeFilterUser}>
+                                                    <Printer size={18} /> 인쇄 (팝업)
+                                                </Button>
+                                            </div>
+                                        </div>
+
+                                        {/* 상세 필터 (등록자 선택 + 기간) */}
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                    {reportMode === 'all' ? '조회 범위' : '등록자 선택'}
+                                                </label>
+                                                {reportMode === 'all' ? (
+                                                    <div className="w-full border border-gray-200 bg-gray-50 text-gray-700 rounded-lg p-2 text-sm font-medium">
+                                                        전체 이용자 (총액 기준)
+                                                    </div>
+                                                ) : (
+                                                    <select
+                                                        className="w-full border border-gray-300 rounded-lg p-2 text-sm"
+                                                        value={filterUser}
+                                                        onChange={e => { setFilterUser(e.target.value); setCheckedIds([]); }}
+                                                    >
+                                                        {users.length === 0 ? (
+                                                            <option value="">등록된 이용자 없음</option>
+                                                        ) : (
+                                                            users.map(u => (
+                                                                <option key={u.id} value={u.id}>
+                                                                    {u.group ? `${u.name} (${u.group})` : u.name}
+                                                                </option>
+                                                            ))
+                                                        )}
+                                                    </select>
+                                                )}
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">시작일</label>
+                                                <input type="date" className="w-full border border-gray-300 rounded-lg p-2 text-sm" value={startDate} onChange={e => setStartDate(e.target.value)} />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">종료일</label>
+                                                <input type="date" className="w-full border border-gray-300 rounded-lg p-2 text-sm" value={endDate} onChange={e => setEndDate(e.target.value)} />
+                                            </div>
+                                        </div>
+
+                                        {/* 현재 조회 요약 */}
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-gray-100 text-center">
+                                            <div className="bg-green-50 rounded-lg p-2.5">
+                                                <div className="text-xs text-gray-500">기간 총 수입</div>
+                                                <div className="text-base font-bold text-green-700">{formatCurrency(stats.totalIncome)}</div>
+                                            </div>
+                                            <div className="bg-red-50 rounded-lg p-2.5">
+                                                <div className="text-xs text-gray-500">{reportMode === 'all' ? '기간 총 지출' : '기간 본인 갹출 지출'}</div>
+                                                <div className="text-base font-bold text-red-700">{formatCurrency(stats.totalExpense)}</div>
+                                            </div>
+                                            <div className="bg-blue-50 rounded-lg p-2.5">
+                                                <div className="text-xs text-gray-500">현재 잔액 (통장 {formatCurrency(stats.bankBalance)} / 현금 {formatCurrency(stats.cashBalance)})</div>
+                                                <div className="text-base font-bold text-blue-800">{formatCurrency(stats.totalBalance)}</div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* 내역 테이블 + 선택 삭제 */}
+                                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
+                                        {checkedIds.length > 0 && (
+                                            <div className="bg-red-50 p-2.5 flex justify-between items-center border-b border-red-100">
+                                                <span className="text-sm text-red-600 font-bold ml-2">{checkedIds.length}개 선택됨</span>
+                                                <Button variant="danger" onClick={handleDeleteChecked} className="text-xs py-1.5 px-3">
+                                                    <Trash2 size={14} /> 선택 삭제
+                                                </Button>
+                                            </div>
+                                        )}
+                                        <table className="w-full text-left border-collapse">
+                                            <thead className="bg-gray-100 text-gray-700 text-sm">
+                                                <tr>
+                                                    <th className="p-3 w-10 text-center">
+                                                        <input
+                                                            type="checkbox"
+                                                            onChange={() => toggleCheckAll(filteredTransactions)}
+                                                            checked={filteredTransactions.length > 0 && checkedIds.length === filteredTransactions.length}
+                                                        />
+                                                    </th>
+                                                    <th className="p-3">날짜</th>
+                                                    <th className="p-3">구분</th>
+                                                    <th className="p-3">수단</th>
+                                                    <th className="p-3">내역</th>
+                                                    <th className="p-3">비고 / 갹출 인원</th>
+                                                    <th className="p-3 text-right">{activeFilterUser === 'all' ? '금액 (총액)' : '금액 (본인 갹출액)'}</th>
+                                                    <th className="p-3 text-center w-24">관리</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-200 text-sm">
+                                                {filteredTransactions.length === 0 ? (
+                                                    <tr><td colSpan="8" className="p-8 text-center text-gray-400">해당 조건의 내역이 없습니다.</td></tr>
+                                                ) : (
+                                                    filteredTransactions.map(t => (
+                                                        <tr key={t.id} className={checkedIds.includes(t.id) ? 'bg-blue-50' : 'hover:bg-gray-50'}>
+                                                            <td className="p-3 text-center">
+                                                                <input type="checkbox" checked={checkedIds.includes(t.id)} onChange={() => toggleCheck(t.id)} />
+                                                            </td>
+                                                            <td className="p-3 text-gray-600 whitespace-nowrap">{t.date}</td>
+                                                            <td className="p-3 whitespace-nowrap">
+                                                                <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                                                                    t.type === 'income' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                                                                }`}>
+                                                                    {t.type === 'income' ? '수입' : '지출'}
+                                                                </span>
+                                                            </td>
+                                                            <td className="p-3 text-xs font-medium whitespace-nowrap">
+                                                                <span className={(t.method || 'bank') === 'bank' ? 'text-blue-600' : 'text-yellow-600'}>
+                                                                    {(t.method || 'bank') === 'bank' ? '통장' : '현금'}
+                                                                </span>
+                                                            </td>
+                                                            <td className="p-3 font-medium text-gray-800">{t.description}</td>
+                                                            <td className="p-3 text-gray-500">
+                                                                {t.type === 'income'
+                                                                    ? getUserDisplay(t.userId)
+                                                                    : `${getInvolvedSummary(t.involvedUserIds)} · 1인당 ${formatCurrency(t.amount)}`
+                                                                }
+                                                            </td>
+                                                            <td className="p-3 text-right font-medium whitespace-nowrap">
+                                                                {activeFilterUser === 'all' && t.type === 'expense' ? formatCurrency(t.totalAmount) : formatCurrency(t.amount)}
+                                                            </td>
+                                                            <td className="p-3 text-center">
+                                                                <div className="flex justify-center gap-2">
+                                                                    <button onClick={() => startEditTransaction(t)} className="text-gray-400 hover:text-blue-600" title="수정"><Edit2 size={16} /></button>
+                                                                    <button onClick={() => deleteTransaction(t.id)} className="text-gray-400 hover:text-red-600" title="삭제"><Trash2 size={16} /></button>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    ))
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    {/* 미리보기 모달 */}
+                                    {showPreview && (
+                                        <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex justify-center items-start overflow-y-auto pt-8 pb-8">
+                                            <div className="relative w-full max-w-6xl mx-4">
+                                                <div className="bg-white p-3 rounded-t-xl flex justify-between items-center border-b">
+                                                    <span className="font-bold text-gray-700 ml-2">인쇄 미리보기 ({currentTargetName})</span>
+                                                    <div className="flex gap-2">
+                                                        <button onClick={handlePrint} className="bg-blue-600 px-4 py-2 rounded-lg text-white hover:bg-blue-700 flex items-center gap-2 text-sm font-bold">
+                                                            <Printer size={18} /> 지금 인쇄 (팝업)
+                                                        </button>
+                                                        <button onClick={() => setShowPreview(false)} className="bg-gray-200 px-4 py-2 rounded-lg text-gray-700 hover:bg-gray-300 flex items-center gap-2 text-sm font-bold">
+                                                            <X size={18} /> 닫기
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <div className="preview-container max-h-[80vh] overflow-auto rounded-b-xl">
+                                                    <PrintableDocument
+                                                        startDate={startDate}
+                                                        endDate={endDate}
+                                                        filterUser={activeFilterUser}
+                                                        targetName={currentTargetName}
+                                                        stats={stats}
+                                                        transactions={filteredTransactions}
+                                                        formatCurrency={formatCurrency}
+                                                        openingBalance={openingBalances}
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* 이용자 수정 모달 (이름 + 그룹) */}
+                            {editingUser && (
+                                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+                                    <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 animate-in">
+                                        <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
+                                            <Edit2 size={18} className="text-blue-600" /> 이용자 정보 수정
+                                        </h2>
+                                        <Input
+                                            label="이용자 이름"
+                                            value={editingUser.name}
+                                            onChange={e => setEditingUser({ ...editingUser, name: e.target.value })}
+                                            placeholder="이름 입력"
+                                        />
+                                        <Input
+                                            label="그룹"
+                                            value={editingUser.group}
+                                            onChange={e => setEditingUser({ ...editingUser, group: e.target.value })}
+                                            placeholder="그룹 입력 (선택)"
+                                        />
+                                        <div className="flex justify-end gap-2 mt-4 pt-3 border-t">
+                                            <Button variant="secondary" onClick={() => setEditingUser(null)}>취소</Button>
+                                            <Button onClick={saveEditedUser}>저장</Button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* 거래 내역 수정 모달 */}
+                            {isEditModalOpen && editingItem && (
+                                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+                                    <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 animate-in">
+                                        <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+                                            <Edit2 size={20} className="text-blue-600" /> 내역 수정
+                                        </h2>
+                                        <div className="space-y-4">
+                                            <Input label="날짜" type="date" value={editingItem.date} onChange={e => setEditingItem({ ...editingItem, date: e.target.value })} />
+                                            <MethodSelector value={editingItem.method} onChange={(m) => setEditingItem({ ...editingItem, method: m })} bankLabel={editingItem.type === 'expense' ? '카드' : '통장'} />
+                                            <Input label="내역" value={editingItem.description} onChange={e => setEditingItem({ ...editingItem, description: e.target.value })} />
+                                            <div className="mb-4">
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                    {editingItem.type === 'expense' ? '총 지출 금액 (1인당 자동 재계산)' : '금액'}
+                                                </label>
+                                                <input
+                                                    type="number"
+                                                    value={editingItem.editAmount}
+                                                    onChange={e => setEditingItem({ ...editingItem, editAmount: e.target.value })}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                    {editingItem.type === 'income' ? '대상 이용자 (1명)' : '참여 이용자 (다중 선택)'}
+                                                </label>
+                                                <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto border p-2 rounded-lg bg-gray-50">
+                                                    {users.map(u => (
+                                                        <div
+                                                            key={u.id}
+                                                            onClick={() => toggleEditUserSelection(u.id)}
+                                                            className={`cursor-pointer p-2 rounded border flex items-center gap-2 select-none ${
+                                                                editingItem.editUsers.includes(u.id)
+                                                                    ? 'bg-blue-100 border-blue-300 text-blue-800'
+                                                                    : 'bg-white border-gray-200 hover:border-blue-300'
+                                                            }`}
+                                                        >
+                                                            <div className={`w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center ${
+                                                                editingItem.editUsers.includes(u.id) ? 'bg-blue-500 border-blue-500' : 'bg-white border-gray-300'
+                                                            }`}>
+                                                                {editingItem.editUsers.includes(u.id) && <Check size={10} className="text-white" />}
+                                                            </div>
+                                                            <span className="text-sm truncate">
+                                                                {u.name}{u.group ? ` (${u.group})` : ''}
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                                {editingItem.type === 'expense' && editingItem.editUsers.length > 0 && (
+                                                    <p className="text-xs text-blue-600 mt-2 text-right">
+                                                        {editingItem.editUsers.length}명 참여 / 1인당 예상: {formatCurrency(Math.floor((parseInt(editingItem.editAmount, 10) || 0) / editingItem.editUsers.length))}
+                                                    </p>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <div className="flex justify-end gap-3 mt-6 border-t pt-4">
+                                            <Button variant="secondary" onClick={() => setIsEditModalOpen(false)}>취소</Button>
+                                            <Button onClick={saveEditedTransaction}>수정 완료</Button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* 전역 다이얼로그 */}
+                            <GlobalDialog
+                                config={dialogConfig}
+                                onClose={() => setDialogConfig(prev => ({ ...prev, isOpen: false }))}
+                                onConfirm={dialogConfig.onConfirmCallback}
+                            />
+                        </main>
+                    </div>
+
+                    {/* 인쇄용 숨김 컨테이너 */}
+                    <div style={{ display: 'none' }}>
+                        <div ref={printContentRef}>
+                            <PrintableDocument
+                                startDate={startDate}
+                                endDate={endDate}
+                                filterUser={activeFilterUser}
+                                targetName={currentTargetName}
+                                stats={stats}
+                                transactions={filteredTransactions}
+                                formatCurrency={formatCurrency}
+                                openingBalance={openingBalances}
+                            />
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
